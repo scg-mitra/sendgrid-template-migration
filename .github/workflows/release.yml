@@ -1,0 +1,129 @@
+name: Build & Release
+
+# - Push a tag like v1.0.0 to build everything and publish a GitHub Release.
+# - Pushes to main and pull requests build everything and attach the files
+#   to the workflow run (Actions tab → run → Artifacts) without releasing.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # v1.2.3 for tags, 0.0.0-<sha> for everything else.
+  RAW_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
+
+jobs:
+  linux-windows:
+    name: Linux (.deb, .rpm) + Windows (installer)
+    # 22.04 keeps the glibc requirement low so the Linux build runs on older distros.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev nsis zip
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/tc-hib/go-winres@latest
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: Set version
+        run: echo "VERSION=${RAW_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Check generated bindings are up to date
+        run: |
+          CGO_ENABLED=0 wails3 generate bindings -ts -d frontend/src/bindings -silent
+          git diff --exit-code -- frontend/src/bindings
+
+      - name: Build frontend
+        run: |
+          packaging/build-frontend.sh
+          (cd frontend && npm run lint)
+
+      - name: Test
+        run: |
+          go vet -tags gtk3 ./...
+          go test -race -tags gtk3 ./...
+
+      - name: Build Linux
+        run: SKIP_FRONTEND=1 packaging/build-linux.sh
+
+      - name: Build Windows
+        run: SKIP_FRONTEND=1 packaging/build-windows.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-windows
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+            dist/*.exe
+            dist/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-latest # arm64
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set version
+        run: echo "VERSION=${RAW_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Build macOS app
+        run: packaging/build-macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > checksums.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

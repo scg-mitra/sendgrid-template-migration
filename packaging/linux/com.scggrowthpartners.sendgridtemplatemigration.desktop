@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SendGrid Template Migration
+GenericName=Template Copier
+Comment=Copy SendGrid email templates between accounts
+Exec=sendgrid-template-migration
+Icon=com.scggrowthpartners.sendgridtemplatemigration
+Terminal=false
+Categories=Utility;
+Keywords=sendgrid;email;template;subuser;

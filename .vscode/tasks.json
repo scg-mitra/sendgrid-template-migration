@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // The Go binary embeds frontend/dist, so it must exist before Go can
+      // compile. Only builds when it's missing; use "frontend: build" to rebuild.
+      "label": "frontend: build if missing",
+      "type": "shell",
+      "command": "test -f frontend/dist/index.html || packaging/build-frontend.sh",
+      "windows": {
+        "command": "if (!(Test-Path frontend/dist/index.html)) { cd frontend; npm ci; npm run build }"
+      },
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "frontend: build",
+      "type": "shell",
+      "command": "packaging/build-frontend.sh",
+      "windows": { "command": "cd frontend; npm ci; npm run build" },
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      // Runs in the background and stays up between debug sessions.
+      // Stop it with Terminal → Terminate Task.
+      "label": "frontend: dev server",
+      "type": "shell",
+      "command": "npm run dev -- --host 127.0.0.1 --port 34115 --strictPort",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^__never_matches__$" },
+        "background": {
+          "activesBegins": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in"
+        }
+      }
+    },
+    {
+      "label": "dev: start UI server",
+      "dependsOrder": "sequence",
+      "dependsOn": ["frontend: build if missing", "frontend: dev server"],
+      "problemMatcher": []
+    },
+    {
+      "label": "bindings: regenerate",
+      "detail": "Run after changing app.go",
+      "type": "shell",
+      "command": "make bindings",
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "make test",
+      "problemMatcher": ["$go"],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "lint",
+      "type": "shell",
+      "command": "make lint",
+      "problemMatcher": ["$go"]
+    }
+  ]
+}

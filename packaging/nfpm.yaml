@@ -1,0 +1,35 @@
+# Linux .deb/.rpm packaging. Run via packaging/build-linux.sh.
+name: sendgrid-template-migration
+arch: amd64
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: utils
+maintainer: Mitra Kalloo <mitra@scggrowthpartners.com>
+vendor: SCG Growth Partners
+description: Copy SendGrid email templates (and their versions) between accounts, e.g. parent to subuser.
+
+contents:
+  - src: dist/linux/sendgrid-template-migration
+    dst: /usr/bin/sendgrid-template-migration
+    file_info:
+      mode: 0755
+  - src: packaging/linux/com.scggrowthpartners.sendgridtemplatemigration.desktop
+    dst: /usr/share/applications/com.scggrowthpartners.sendgridtemplatemigration.desktop
+  - src: assets/app-icon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/com.scggrowthpartners.sendgridtemplatemigration.png
+  - src: assets/app-icon.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/com.scggrowthpartners.sendgridtemplatemigration.svg
+
+# The app window uses the system's GTK3 + WebKit2GTK 4.1 (see `readelf -d`);
+# these pull in the remaining libraries.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.34)
+      - libgtk-3-0
+      - libwebkit2gtk-4.1-0
+  rpm:
+    depends:
+      - gtk3
+      - webkit2gtk4.1

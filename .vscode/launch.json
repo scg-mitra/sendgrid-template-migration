@@ -1,0 +1,38 @@
+{
+  // F5 runs "App (live UI)": starts the Vite dev server, then the Go app under
+  // the debugger with its UI served by Vite, so frontend edits show up
+  // instantly and Go breakpoints work. Right-click in the window →
+  // Inspect Element for the web inspector.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "App (live UI)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "buildFlags": "-tags=gtk3",
+      "env": {
+        "FRONTEND_DEVSERVER_URL": "http://127.0.0.1:34115"
+      },
+      "preLaunchTask": "dev: start UI server"
+    },
+    {
+      "name": "App (built UI)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "buildFlags": "-tags=gtk3",
+      "preLaunchTask": "frontend: build"
+    },
+    {
+      "name": "Go tests",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}",
+      "buildFlags": "-tags=gtk3"
+    }
+  ]
+}
