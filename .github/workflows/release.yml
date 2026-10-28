@@ -40,8 +40,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev nsis zip
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-          go install github.com/tc-hib/go-winres@latest
+          # Pinned build tools. nfpm needs a newer Go than the project, and
+          # setup-go disables automatic toolchain downloads, so allow it here.
+          GOTOOLCHAIN=auto go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+          go install github.com/tc-hib/go-winres@v0.3.3
           CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
       - name: Set version
