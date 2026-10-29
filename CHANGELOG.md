@@ -10,6 +10,13 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-29
+
+### Fixed
+
+- Release builds no longer show warnings about GitHub Actions running on the
+  deprecated Node.js 20, or frontend lint warnings.
+
 ## [1.1.1] - 2026-10-29
 
 ### Changed
@@ -57,7 +64,8 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 - Command-line mode (`-template`) for scripted copies.
 - Rate-limit retries and plain-language error messages.
 
-[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/scg-mitra/sendgrid-template-migration/releases/tag/v1.0.0

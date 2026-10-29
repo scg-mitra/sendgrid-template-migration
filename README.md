@@ -118,7 +118,9 @@ The window is a [Wails v3](https://v3.wails.io) app. The UI is React + TypeScrip
 | `update.go` | The new-release check |
 | `frontend/src/screens/` | The three screens and the preview dialog |
 | `frontend/src/bindings/` | TypeScript bindings generated from `app.go`. Run `make bindings` after changing it. |
-| `packaging/` | Build scripts, Linux `.desktop` file and package config, Windows installer script |
+| `packaging/` | Build scripts, Linux `.desktop` file and package config, Windows installer script, `release-notes.sh` |
+| `CHANGELOG.md` | What changed in each version; each section becomes that version's release notes |
+| `AGENTS.md` | Commands, Go and React/TypeScript conventions, and changelog rules, for contributors and AI coding agents |
 
 Install the toolchain: Go, Node.js 20.19+ or 22.12+ (needed by Vite), and the system web view headers.
 
@@ -134,7 +136,7 @@ CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 ```sh
 make dev       # same as F5 in VS Code, without the debugger
 make test      # go test -race
-make lint      # golangci-lint (install it separately) + oxlint
+make lint      # golangci-lint (install it separately) + oxlint, which must report no warnings
 make bindings  # regenerate frontend/src/bindings after changing app.go
 make build     # dist/sendgrid-template-migration
 ```

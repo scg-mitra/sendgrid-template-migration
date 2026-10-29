@@ -75,7 +75,7 @@ jobs:
       - name: Build Windows
         run: SKIP_FRONTEND=1 packaging/build-windows.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-windows
           path: |
@@ -108,7 +108,7 @@ jobs:
       - name: Build macOS app
         run: packaging/build-macos.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist/*.dmg
@@ -124,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -137,7 +137,7 @@ jobs:
 
       # The CHANGELOG.md section comes first; GitHub appends the
       # "Full Changelog" compare link after it.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: ${{ runner.temp }}/notes.md
