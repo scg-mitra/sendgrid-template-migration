@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -188,6 +189,34 @@ func TestAppCopyTemplates(t *testing.T) {
 				if ev.Done != i+1 || ev.Total != len(tt.ids) || ev.Result != results[ev.Index] {
 					t.Errorf("event %d = %+v, want done %d of %d with result %+v", i, ev, i+1, len(tt.ids), results[ev.Index])
 				}
+			}
+		})
+	}
+}
+
+func TestCleanOverrides(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      map[string]CopyOverride
+		want    map[string]CopyOverride
+		wantErr bool
+	}{
+		{name: "none", in: nil, want: nil},
+		{name: "trims names and keeps empty policies", in: map[string]CopyOverride{"d-1": {Name: "  Hello "}}, want: map[string]CopyOverride{"d-1": {Name: "Hello"}}},
+		{name: "normalizes policies", in: map[string]CopyOverride{"d-1": {OnExisting: " ADD"}}, want: map[string]CopyOverride{"d-1": {OnExisting: ExistingAddVersions}}},
+		{name: "rejects unknown policies", in: map[string]CopyOverride{"d-1": {OnExisting: "overwrite"}}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := cleanOverrides(tt.in)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("cleanOverrides() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("cleanOverrides() = %v, want %v", got, tt.want)
 			}
 		})
 	}

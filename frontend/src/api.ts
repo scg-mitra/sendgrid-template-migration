@@ -14,7 +14,7 @@ export type {
   TemplateInfo,
   UpdateInfo,
 } from "@/bindings/github.com/scg-mitra/sendgrid-template-migration/models"
-export type { CopyOptions } from "@/bindings/github.com/scg-mitra/sendgrid-template-migration/models"
+export type { CopyOptions, CopyOverride } from "@/bindings/github.com/scg-mitra/sendgrid-template-migration/models"
 export { CopyProgress as CopyProgressEvent } from "@/bindings/events"
 export { Application, Browser, Clipboard, Dialogs, Events }
 

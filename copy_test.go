@@ -34,6 +34,35 @@ func TestCopyOptionsCopyName(t *testing.T) {
 	}
 }
 
+func TestCopyOptionsForTemplate(t *testing.T) {
+	t.Parallel()
+
+	base := CopyOptions{Prefix: "[EU] ", OnExisting: ExistingSkip, Overrides: map[string]CopyOverride{
+		"d-name":   {Name: "Hello"},
+		"d-policy": {OnExisting: ExistingAddVersions},
+		"d-both":   {Name: "Hello", OnExisting: ExistingDuplicate},
+	}}
+	tests := []struct {
+		id         string
+		wantName   string
+		wantPolicy string
+	}{
+		{id: "d-none", wantName: "[EU] Welcome", wantPolicy: ExistingSkip},
+		{id: "d-name", wantName: "Hello", wantPolicy: ExistingSkip},
+		{id: "d-policy", wantName: "[EU] Welcome", wantPolicy: ExistingAddVersions},
+		{id: "d-both", wantName: "Hello", wantPolicy: ExistingDuplicate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			t.Parallel()
+			got := base.forTemplate(tt.id)
+			if name := got.copyName("Welcome"); name != tt.wantName || got.OnExisting != tt.wantPolicy {
+				t.Errorf("forTemplate(%q) = name %q, policy %q; want %q, %q", tt.id, name, got.OnExisting, tt.wantName, tt.wantPolicy)
+			}
+		})
+	}
+}
+
 func TestParseExistingPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +125,21 @@ func TestCopyTemplateExisting(t *testing.T) {
 		{
 			name: "renamed copy doesn't clash", opts: CopyOptions{OnExisting: ExistingSkip, Suffix: " v2"},
 			wantAction: ActionCreated, wantDstCount: 2, wantVersions: []string{"old", "current"}, wantActive: "current", wantDstWrites: true,
+		},
+		{
+			name:       "override name avoids the clash",
+			opts:       CopyOptions{OnExisting: ExistingSkip, Overrides: map[string]CopyOverride{welcome.ID: {Name: "Welcome (copy)"}}},
+			wantAction: ActionCreated, wantDstCount: 2, wantVersions: []string{"old", "current"}, wantActive: "current", wantDstWrites: true,
+		},
+		{
+			name:       "override policy replaces the default",
+			opts:       CopyOptions{OnExisting: ExistingSkip, Overrides: map[string]CopyOverride{welcome.ID: {OnExisting: ExistingAddVersions}}},
+			wantAction: ActionAdded, wantID: "d-old", wantDstCount: 1, wantVersions: []string{"original", "old", "current"}, wantActive: "current", wantDstWrites: true,
+		},
+		{
+			name:       "override for another template is ignored",
+			opts:       CopyOptions{OnExisting: ExistingSkip, Overrides: map[string]CopyOverride{"d-other": {OnExisting: ExistingAddVersions}}},
+			wantAction: ActionSkipped, wantID: "d-old", wantDstCount: 1, wantVersions: []string{"original"}, wantActive: "original",
 		},
 		{
 			name: "dry run changes nothing", opts: CopyOptions{OnExisting: ExistingAddVersions, DryRun: true},

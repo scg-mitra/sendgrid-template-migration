@@ -79,6 +79,12 @@ export class CopyOptions {
      */
     "onExisting": string;
 
+    /**
+     * Overrides holds choices for individual templates, keyed by source
+     * template ID, that replace Name and OnExisting for that template.
+     */
+    "overrides"?: { [_ in string]?: CopyOverride };
+
     /** Creates a new CopyOptions instance. */
     constructor($$source: Partial<CopyOptions> = {}) {
         if (!("prefix" in $$source)) {
@@ -101,8 +107,35 @@ export class CopyOptions {
      * Creates a new CopyOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): CopyOptions {
+        const $$createField5_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("overrides" in $$parsedSource) {
+            $$parsedSource["overrides"] = $$createField5_0($$parsedSource["overrides"]);
+        }
         return new CopyOptions($$parsedSource as Partial<CopyOptions>);
+    }
+}
+
+/**
+ * CopyOverride replaces CopyOptions.Name and OnExisting for one template.
+ * Empty fields keep the value from CopyOptions.
+ */
+export class CopyOverride {
+    "name"?: string;
+    "onExisting"?: string;
+
+    /** Creates a new CopyOverride instance. */
+    constructor($$source: Partial<CopyOverride> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CopyOverride instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CopyOverride {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CopyOverride($$parsedSource as Partial<CopyOverride>);
     }
 }
 
@@ -141,7 +174,7 @@ export class CopyProgress {
      * Creates a new CopyProgress instance from a string or object.
      */
     static createFrom($$source: any = {}): CopyProgress {
-        const $$createField3_0 = $$createType0;
+        const $$createField3_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("result" in $$parsedSource) {
             $$parsedSource["result"] = $$createField3_0($$parsedSource["result"]);
@@ -259,7 +292,7 @@ export class Defaults {
      * Creates a new Defaults instance from a string or object.
      */
     static createFrom($$source: any = {}): Defaults {
-        const $$createField8_0 = $$createType2;
+        const $$createField8_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("regions" in $$parsedSource) {
             $$parsedSource["regions"] = $$createField8_0($$parsedSource["regions"]);
@@ -379,8 +412,8 @@ export class Session {
      * Creates a new Session instance from a string or object.
      */
     static createFrom($$source: any = {}): Session {
-        const $$createField4_0 = $$createType3;
-        const $$createField5_0 = $$createType5;
+        const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("destNames" in $$parsedSource) {
             $$parsedSource["destNames"] = $$createField4_0($$parsedSource["destNames"]);
@@ -457,9 +490,11 @@ export class UpdateInfo {
 }
 
 // Private type creation functions
-const $$createType0 = CopyResult.createFrom;
-const $$createType1 = Region.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $Create.Array($Create.Any);
-const $$createType4 = TemplateInfo.createFrom;
-const $$createType5 = $Create.Array($$createType4);
+const $$createType0 = CopyOverride.createFrom;
+const $$createType1 = $Create.Map($Create.Any, $$createType0);
+const $$createType2 = CopyResult.createFrom;
+const $$createType3 = Region.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $Create.Array($Create.Any);
+const $$createType6 = TemplateInfo.createFrom;
+const $$createType7 = $Create.Array($$createType6);

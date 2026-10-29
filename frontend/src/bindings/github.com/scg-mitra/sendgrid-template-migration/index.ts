@@ -9,6 +9,7 @@ export {
 export {
     Connection,
     CopyOptions,
+    CopyOverride,
     CopyProgress,
     CopyResult,
     Defaults,

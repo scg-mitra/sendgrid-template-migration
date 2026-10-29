@@ -356,6 +356,32 @@ type CopyOptions struct {
 	ActiveOnly bool   `json:"activeOnly"`
 	OnExisting string `json:"onExisting"` // ExistingDuplicate (the default), ExistingSkip or ExistingAddVersions
 	DryRun     bool   `json:"-"`          // report what would happen without changing the destination
+	// Overrides holds choices for individual templates, keyed by source
+	// template ID, that replace Name and OnExisting for that template.
+	Overrides map[string]CopyOverride `json:"overrides,omitempty"`
+}
+
+// CopyOverride replaces CopyOptions.Name and OnExisting for one template.
+// Empty fields keep the value from CopyOptions.
+type CopyOverride struct {
+	Name       string `json:"name,omitempty"`
+	OnExisting string `json:"onExisting,omitempty"`
+}
+
+// forTemplate returns the options for the template with the given ID, with
+// its override, if any, applied.
+func (o CopyOptions) forTemplate(id string) CopyOptions {
+	ov, ok := o.Overrides[id]
+	if !ok {
+		return o
+	}
+	if ov.Name != "" {
+		o.Name = ov.Name
+	}
+	if ov.OnExisting != "" {
+		o.OnExisting = ov.OnExisting
+	}
+	return o
 }
 
 // copyName returns the destination name for a source template named name.
@@ -392,12 +418,14 @@ const cleanupTimeout = 30 * time.Second
 
 // CopyTemplate copies the template with the given ID from src to dst.
 // existing maps the names of templates already in dst to their IDs; it is
-// consulted according to opts.OnExisting.
+// consulted according to opts.OnExisting. opts.Overrides for templateID, if
+// any, apply.
 //
 // If creating a version fails, whatever the copy created in dst is removed
 // again (even if ctx was cancelled), so a failed copy leaves no trace.
 func CopyTemplate(ctx context.Context, src templateReader, dst *Client, templateID string, opts CopyOptions, existing map[string]string) (CopyOutcome, error) {
 	var out CopyOutcome
+	opts = opts.forTemplate(templateID)
 	t, err := src.GetTemplate(ctx, templateID)
 	if err != nil {
 		return out, fmt.Errorf("fetching source template %s: %w", templateID, err)

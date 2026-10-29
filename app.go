@@ -216,7 +216,8 @@ type CopyProgress struct {
 
 // CopyTemplates copies the given source templates to the destination,
 // emitting eventCopyProgress after each one, and returns all results.
-// opts.Name and opts.DryRun are ignored.
+// opts.Name and opts.DryRun are ignored; opts.Overrides name or handle
+// individual templates.
 func (a *App) CopyTemplates(ctx context.Context, ids []string, opts CopyOptions) ([]CopyResult, error) {
 	var err error
 	a.mu.Lock()
@@ -227,6 +228,9 @@ func (a *App) CopyTemplates(ctx context.Context, ids []string, opts CopyOptions)
 	}
 	opts.Name, opts.DryRun = "", false
 	if opts.OnExisting, err = ParseExistingPolicy(opts.OnExisting); err != nil {
+		return nil, err
+	}
+	if opts.Overrides, err = cleanOverrides(opts.Overrides); err != nil {
 		return nil, err
 	}
 
@@ -240,6 +244,26 @@ func (a *App) CopyTemplates(ctx context.Context, ids []string, opts CopyOptions)
 		}
 	})
 	return results, ctx.Err()
+}
+
+// cleanOverrides trims override names and validates their policies, which
+// may be empty to keep the policy from CopyOptions.
+func cleanOverrides(in map[string]CopyOverride) (map[string]CopyOverride, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]CopyOverride, len(in))
+	for id, ov := range in {
+		ov.Name = strings.TrimSpace(ov.Name)
+		if ov.OnExisting != "" {
+			var err error
+			if ov.OnExisting, err = ParseExistingPolicy(ov.OnExisting); err != nil {
+				return nil, fmt.Errorf("template %s: %w", id, err)
+			}
+		}
+		out[id] = ov
+	}
+	return out, nil
 }
 
 // Preview is the content of a template version, for previewing.

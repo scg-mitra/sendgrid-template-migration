@@ -39,7 +39,8 @@ export function Connect(conn: $models.Connection): $CancellablePromise<$models.S
 /**
  * CopyTemplates copies the given source templates to the destination,
  * emitting eventCopyProgress after each one, and returns all results.
- * opts.Name and opts.DryRun are ignored.
+ * opts.Name and opts.DryRun are ignored; opts.Overrides name or handle
+ * individual templates.
  */
 export function CopyTemplates(ids: string[], opts: $models.CopyOptions): $CancellablePromise<$models.CopyResult[]> {
     return $Call.ByID(3316041407, ids, opts).then(($result: any) => {

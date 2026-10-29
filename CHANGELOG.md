@@ -10,6 +10,13 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
 
+### Added
+
+- Choose what to do with each template whose name already exists in the
+  destination: skip it, add its versions to the existing template, create a
+  duplicate, or copy it under a new name (a free name is suggested). "Set all
+  to" applies one choice to every clash, and the list scrolls when it's long.
+
 ## [1.2.1] - 2026-10-29
 
 ### Changed
