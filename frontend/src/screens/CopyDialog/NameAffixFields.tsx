@@ -9,11 +9,10 @@ interface NameAffixFieldsProps {
   onPrefixChange: (value: string) => void
   onSuffixChange: (value: string) => void
   example: string
-  newName: (name: string) => string
 }
 
 /** Text to add before and after every template's name, with a preview. */
-export function NameAffixFields({ prefix, suffix, onPrefixChange, onSuffixChange, example, newName }: NameAffixFieldsProps) {
+export function NameAffixFields({ prefix, suffix, onPrefixChange, onSuffixChange, example }: NameAffixFieldsProps) {
   const renamed = prefix !== "" || suffix !== ""
   return (
     <Field>
@@ -33,17 +32,23 @@ export function NameAffixFields({ prefix, suffix, onPrefixChange, onSuffixChange
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSuffixChange(e.target.value)}
         />
       </div>
-      <FieldDescription className="flex min-w-0 items-center gap-1.5">
-        {renamed ? (
-          <>
-            <span className="truncate">{example}</span>
-            <ArrowRightIcon className="size-3.5 shrink-0" />
-            <span className="truncate font-medium text-foreground">{newName(example)}</span>
-          </>
-        ) : (
-          "Copies keep their original names. Include any spaces you want between the text and the name."
-        )}
-      </FieldDescription>
+      {renamed ? (
+        // Wraps rather than truncating, so long names and the added text stay
+        // visible; pre-wrap shows any spaces typed around the name.
+        <div className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-sm break-words whitespace-pre-wrap">
+          <p className="text-muted-foreground">{example}</p>
+          <p className="flex gap-1.5">
+            <ArrowRightIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 font-medium">
+              <mark className="rounded-sm bg-primary/15 text-primary">{prefix}</mark>
+              {example}
+              <mark className="rounded-sm bg-primary/15 text-primary">{suffix}</mark>
+            </span>
+          </p>
+        </div>
+      ) : (
+        <FieldDescription>Copies keep their original names. Include any spaces you want between the text and the name.</FieldDescription>
+      )}
     </Field>
   )
 }

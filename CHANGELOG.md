@@ -17,6 +17,11 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
   duplicate, or copy it under a new name (a free name is suggested). "Set all
   to" applies one choice to every clash, and the list scrolls when it's long.
 
+### Fixed
+
+- The new-name preview in the copy dialog no longer cuts off long names. It
+  shows the whole name and highlights the added text, including any spaces.
+
 ## [1.2.1] - 2026-10-29
 
 ### Changed

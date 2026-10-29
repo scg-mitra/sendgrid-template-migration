@@ -2,3 +2,5 @@
 rsrc_windows_*.syso
 frontend/node_modules/
 frontend/dist/
+# Delve binaries from VS Code debug sessions
+__debug_bin*

@@ -43,7 +43,6 @@ export function CopyDialog({ session, chosen, destNames, onCancel, onCopy }: Cop
             onPrefixChange={d.setPrefix}
             onSuffixChange={d.setSuffix}
             example={chosen[0]?.name ?? "Welcome"}
-            newName={d.newName}
           />
 
           {d.clashes.length > 0 && (
