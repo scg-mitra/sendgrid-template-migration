@@ -6,16 +6,24 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * Connection describes the two accounts templates are copied between.
+ * Connection describes the two sides templates are copied between.
  * 
- * The destination is reached either with its own API key (DestKey), or by
- * the source (parent) key acting on behalf of a subuser (Subuser).
+ * The source is a backup file (SourceFile), or the account of SourceKey,
+ * optionally acting on behalf of one of its subusers (SourceSubuser).
+ * 
+ * The destination is, in order of precedence: nothing, when ExportOnly is
+ * set; the account of DestKey; SourceKey acting on behalf of the subuser
+ * Subuser; or, when the source is a subuser, SourceKey's own (parent)
+ * account.
  */
 export class Connection {
     "baseURL": string;
     "sourceKey": string;
+    "sourceSubuser": string;
+    "sourceFile": string;
     "destKey": string;
     "subuser": string;
+    "exportOnly": boolean;
 
     /** Creates a new Connection instance. */
     constructor($$source: Partial<Connection> = {}) {
@@ -25,11 +33,20 @@ export class Connection {
         if (!("sourceKey" in $$source)) {
             this["sourceKey"] = "";
         }
+        if (!("sourceSubuser" in $$source)) {
+            this["sourceSubuser"] = "";
+        }
+        if (!("sourceFile" in $$source)) {
+            this["sourceFile"] = "";
+        }
         if (!("destKey" in $$source)) {
             this["destKey"] = "";
         }
         if (!("subuser" in $$source)) {
             this["subuser"] = "";
+        }
+        if (!("exportOnly" in $$source)) {
+            this["exportOnly"] = false;
         }
 
         Object.assign(this, $$source);
@@ -45,11 +62,61 @@ export class Connection {
 }
 
 /**
+ * CopyOptions controls how CopyTemplate copies a template.
+ */
+export class CopyOptions {
+    /**
+     * Name is the name for the copy. If empty, the copy is named
+     * Prefix + the source template's name + Suffix.
+     */
+    "name"?: string;
+    "prefix": string;
+    "suffix": string;
+    "activeOnly": boolean;
+
+    /**
+     * ExistingDuplicate (the default), ExistingSkip or ExistingAddVersions
+     */
+    "onExisting": string;
+
+    /** Creates a new CopyOptions instance. */
+    constructor($$source: Partial<CopyOptions> = {}) {
+        if (!("prefix" in $$source)) {
+            this["prefix"] = "";
+        }
+        if (!("suffix" in $$source)) {
+            this["suffix"] = "";
+        }
+        if (!("activeOnly" in $$source)) {
+            this["activeOnly"] = false;
+        }
+        if (!("onExisting" in $$source)) {
+            this["onExisting"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CopyOptions instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CopyOptions {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CopyOptions($$parsedSource as Partial<CopyOptions>);
+    }
+}
+
+/**
  * CopyProgress is the payload of the eventCopyProgress event.
  */
 export class CopyProgress {
     "done": number;
     "total": number;
+
+    /**
+     * position of Result's template in the ids passed to CopyTemplates
+     */
+    "index": number;
     "result": CopyResult;
 
     /** Creates a new CopyProgress instance. */
@@ -59,6 +126,9 @@ export class CopyProgress {
         }
         if (!("total" in $$source)) {
             this["total"] = 0;
+        }
+        if (!("index" in $$source)) {
+            this["index"] = 0;
         }
         if (!("result" in $$source)) {
             this["result"] = (new CopyResult());
@@ -71,10 +141,10 @@ export class CopyProgress {
      * Creates a new CopyProgress instance from a string or object.
      */
     static createFrom($$source: any = {}): CopyProgress {
-        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("result" in $$parsedSource) {
-            $$parsedSource["result"] = $$createField2_0($$parsedSource["result"]);
+            $$parsedSource["result"] = $$createField3_0($$parsedSource["result"]);
         }
         return new CopyProgress($$parsedSource as Partial<CopyProgress>);
     }
@@ -85,13 +155,32 @@ export class CopyProgress {
  */
 export class CopyResult {
     "id": string;
+
+    /**
+     * the source template's name
+     */
     "name": string;
+
+    /**
+     * the destination template's name
+     */
+    "newName"?: string;
+
+    /**
+     * the destination template (created, added to or skipped)
+     */
     "newID"?: string;
+
+    /**
+     * ActionCreated, ActionAdded or ActionSkipped
+     */
+    "action"?: string;
     "versions": number;
     "error"?: string;
 
     /**
-     * destination template left behind by a failed copy
+     * PartialID is a destination template a failed copy left behind because
+     * cleaning it up failed too.
      */
     "partialID"?: string;
 
@@ -125,8 +214,11 @@ export class CopyResult {
 export class Defaults {
     "baseURL": string;
     "sourceKey": string;
+    "sourceSubuser": string;
+    "sourceFile": string;
     "destKey": string;
     "subuser": string;
+    "exportOnly": boolean;
     "version": string;
     "regions": Region[];
 
@@ -138,11 +230,20 @@ export class Defaults {
         if (!("sourceKey" in $$source)) {
             this["sourceKey"] = "";
         }
+        if (!("sourceSubuser" in $$source)) {
+            this["sourceSubuser"] = "";
+        }
+        if (!("sourceFile" in $$source)) {
+            this["sourceFile"] = "";
+        }
         if (!("destKey" in $$source)) {
             this["destKey"] = "";
         }
         if (!("subuser" in $$source)) {
             this["subuser"] = "";
+        }
+        if (!("exportOnly" in $$source)) {
+            this["exportOnly"] = false;
         }
         if (!("version" in $$source)) {
             this["version"] = "";
@@ -158,12 +259,52 @@ export class Defaults {
      * Creates a new Defaults instance from a string or object.
      */
     static createFrom($$source: any = {}): Defaults {
-        const $$createField5_0 = $$createType2;
+        const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("regions" in $$parsedSource) {
-            $$parsedSource["regions"] = $$createField5_0($$parsedSource["regions"]);
+            $$parsedSource["regions"] = $$createField8_0($$parsedSource["regions"]);
         }
         return new Defaults($$parsedSource as Partial<Defaults>);
+    }
+}
+
+/**
+ * Preview is the content of a template version, for previewing.
+ */
+export class Preview {
+    "versionName": string;
+    "active": boolean;
+    "subject": string;
+    "html": string;
+    "plain": string;
+
+    /** Creates a new Preview instance. */
+    constructor($$source: Partial<Preview> = {}) {
+        if (!("versionName" in $$source)) {
+            this["versionName"] = "";
+        }
+        if (!("active" in $$source)) {
+            this["active"] = false;
+        }
+        if (!("subject" in $$source)) {
+            this["subject"] = "";
+        }
+        if (!("html" in $$source)) {
+            this["html"] = "";
+        }
+        if (!("plain" in $$source)) {
+            this["plain"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Preview instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Preview {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Preview($$parsedSource as Partial<Preview>);
     }
 }
 
@@ -199,17 +340,33 @@ export class Region {
  * Session describes a successful connection.
  */
 export class Session {
+    "source": string;
     "destination": string;
+    "exportOnly": boolean;
     "destCount": number;
+
+    /**
+     * DestNames are the names of the templates in the destination, sorted.
+     */
+    "destNames": string[];
     "templates": TemplateInfo[];
 
     /** Creates a new Session instance. */
     constructor($$source: Partial<Session> = {}) {
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
         if (!("destination" in $$source)) {
             this["destination"] = "";
         }
+        if (!("exportOnly" in $$source)) {
+            this["exportOnly"] = false;
+        }
         if (!("destCount" in $$source)) {
             this["destCount"] = 0;
+        }
+        if (!("destNames" in $$source)) {
+            this["destNames"] = [];
         }
         if (!("templates" in $$source)) {
             this["templates"] = [];
@@ -222,10 +379,14 @@ export class Session {
      * Creates a new Session instance from a string or object.
      */
     static createFrom($$source: any = {}): Session {
-        const $$createField2_0 = $$createType4;
+        const $$createField4_0 = $$createType3;
+        const $$createField5_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("destNames" in $$parsedSource) {
+            $$parsedSource["destNames"] = $$createField4_0($$parsedSource["destNames"]);
+        }
         if ("templates" in $$parsedSource) {
-            $$parsedSource["templates"] = $$createField2_0($$parsedSource["templates"]);
+            $$parsedSource["templates"] = $$createField5_0($$parsedSource["templates"]);
         }
         return new Session($$parsedSource as Partial<Session>);
     }
@@ -239,7 +400,6 @@ export class TemplateInfo {
     "name": string;
     "generation": string;
     "versions": number;
-    "existsInDest": boolean;
 
     /** Creates a new TemplateInfo instance. */
     constructor($$source: Partial<TemplateInfo> = {}) {
@@ -255,9 +415,6 @@ export class TemplateInfo {
         if (!("versions" in $$source)) {
             this["versions"] = 0;
         }
-        if (!("existsInDest" in $$source)) {
-            this["existsInDest"] = false;
-        }
 
         Object.assign(this, $$source);
     }
@@ -271,9 +428,38 @@ export class TemplateInfo {
     }
 }
 
+/**
+ * UpdateInfo describes a newer release than the running version.
+ */
+export class UpdateInfo {
+    "version": string;
+    "url": string;
+
+    /** Creates a new UpdateInfo instance. */
+    constructor($$source: Partial<UpdateInfo> = {}) {
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateInfo($$parsedSource as Partial<UpdateInfo>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = CopyResult.createFrom;
 const $$createType1 = Region.createFrom;
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = TemplateInfo.createFrom;
-const $$createType4 = $Create.Array($$createType3);
+const $$createType3 = $Create.Array($Create.Any);
+const $$createType4 = TemplateInfo.createFrom;
+const $$createType5 = $Create.Array($$createType4);

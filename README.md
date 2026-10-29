@@ -2,7 +2,7 @@
 
 # SendGrid Template Migration
 
-Copy SendGrid templates, including every version, from one account to another. For example, from a parent account to a subuser.
+Copy SendGrid templates, including every version, from one account to another: for example, from a parent account to a subuser, between subusers, or via a backup file.
 
 ![Choosing templates to copy](assets/screenshot.png)
 
@@ -31,15 +31,33 @@ The builds aren't code-signed, so the OS warns the first time you open them:
 
 Open the app from your app launcher, Start menu or Applications folder. It walks you through three steps:
 
-1. **Connect:** enter the source (parent) API key, then choose how to reach the subuser:
-   - **Subuser API key:** the subuser's own key, with full access to Template Engine.
-   - **Parent key + subuser username:** the parent key acts as the subuser (SendGrid's `on-behalf-of`), so you don't need a separate subuser key. **Find subusers** lists the parent's active subusers to pick from (needs read access to Subuser Management).
+1. **Connect:** pick the data region (EU accounts need the EU region), then where to copy from and to.
 
-   Both accounts are checked before you continue. Keys are never saved.
-2. **Choose templates:** search, select and copy all versions or just the active one. Templates whose name already exists in the destination are flagged.
-3. **Copy:** live progress, then each template's new ID with a copy button. **Copy ID list** puts `name, old ID, new ID` on the clipboard.
+   | Copy from | Copy to |
+   | --- | --- |
+   | **Account API key:** any account's key, usually the parent's. Needs read access to Template Engine. | **Account API key:** the destination account's own key, with full access to Template Engine. |
+   | **A subuser:** the parent key acting as one of its subusers (SendGrid's `on-behalf-of`). | **A subuser:** the parent key acting as the subuser, so you don't need the subuser's own key. The parent key needs full access to Template Engine. |
+   | **Backup file:** a file saved earlier by this app. | **Parent account:** when copying from a subuser, back to the parent the key belongs to. |
+   | | **Backup file:** save the templates to a file instead of copying them. |
 
-The copy gets a new template ID in the destination account, so update any code that references the old ID.
+   **Find** lists the parent's active subusers to pick from (needs read access to Subuser Management). Both sides are checked before you continue. Keys are never saved.
+2. **Choose templates:** search, filter by type, hide templates that are already in the destination, and click the eye icon to preview a template. Shift-click selects a range. Templates whose name already exists in the destination are flagged. **Back up…** saves the selected templates to a file.
+
+   **Copy** then asks how to copy them:
+   - **Versions:** all versions, or only the active one.
+   - **Rename copies:** add text before and/or after each name.
+   - **If the name already exists:** skip the template, add its versions to the existing template (which keeps that template's ID), or create a duplicate alongside it.
+
+   ![Copy options](assets/screenshot-copy-options.png)
+3. **Copy:** a few templates are copied at a time, with live progress, and you can cancel. Each template shows its new ID with a copy button. **Copy IDs** puts `name, old ID, new name, new ID` on the clipboard, and **Save CSV…** saves every result to a file. If some templates fail, **Retry** copies them again with the same options.
+
+   ![Copy results](assets/screenshot-results.png)
+
+New templates get new IDs in the destination, so update any code that references the old IDs.
+
+If a copy fails partway, the app deletes the incomplete template (or the versions it added), so a failed copy leaves nothing behind. Temporary SendGrid errors and rate limits are retried automatically.
+
+The app checks GitHub for a newer release when it starts, and shows a link in the header if there is one.
 
 ### Command line
 
@@ -52,20 +70,37 @@ export SENDGRID_SRC_API_KEY=SG.parent...   # needs Template Engine read access
 SENDGRID_DST_API_KEY=SG.subuser... sendgrid-template-migration -template d-1234567890abcdef
 # Or using the parent key on behalf of a subuser:
 sendgrid-template-migration -dst-subuser acme-marketing -template d-1234567890abcdef
+
+# See what would happen first, skipping templates whose name already exists:
+sendgrid-template-migration -dst-subuser acme-marketing -template d-1234,d-5678 -on-existing skip -dry-run
+
+# List the source templates:
+sendgrid-template-migration -list
+# Back up every template to a file, then copy them all from it later:
+sendgrid-template-migration -export templates.json
+SENDGRID_DST_API_KEY=SG.other... sendgrid-template-migration -import templates.json
 ```
 
 | Flag | Description |
 | --- | --- |
 | `-template` | Template ID to copy. Repeat the flag or pass a comma-separated list. |
 | `-src-key` | Source (parent) API key. Env: `SENDGRID_SRC_API_KEY`. |
-| `-dst-key` | Destination subuser's API key. Env: `SENDGRID_DST_API_KEY`. |
-| `-dst-subuser` | Copy to this subuser using the source key instead of `-dst-key`. Env: `SENDGRID_DST_SUBUSER`. |
+| `-src-subuser` | Copy from this subuser, using `-src-key` as its parent. Env: `SENDGRID_SRC_SUBUSER`. |
+| `-import` | Copy from a backup file instead of an account. Copies every template in it unless `-template` is given. |
+| `-dst-key` | Destination account's API key. Env: `SENDGRID_DST_API_KEY`. |
+| `-dst-subuser` | Copy to this subuser using the source key instead of `-dst-key`. Env: `SENDGRID_DST_SUBUSER`. With `-src-subuser` and neither `-dst-key` nor `-dst-subuser`, templates are copied to the parent account. |
 | `-name` | Name for the copy. Works only with a single template. |
+| `-prefix`, `-suffix` | Text to add before or after each copy's name. |
 | `-active-only` | Copy only the active version. |
+| `-on-existing` | When the destination already has a template with the copy's name: `duplicate` (default), `skip`, or `add` its versions to the existing template. |
+| `-dry-run` | Show what would be copied without changing the destination. |
+| `-list` | List the source templates and exit. |
+| `-export` | Save the `-template` templates (default: all), with every version, to a backup file instead of copying. |
+| `-json` | Print the template list or copy results as JSON. |
 | `-base-url` | Defaults to `https://api.sendgrid.com`. Use `https://api.eu.sendgrid.com` for EU accounts. |
 | `-version` | Print the version. |
 
-Without `-template`, the window opens with the keys, subuser and `-base-url` pre-filled from these flags and environment variables.
+The command exits with status 1 if any template failed to copy. Without `-template`, `-list`, `-export` or `-import`, the window opens with the keys, subusers and `-base-url` pre-filled from these flags and environment variables.
 
 ## Development
 
@@ -73,11 +108,15 @@ The window is a [Wails v3](https://v3.wails.io) app. The UI is React + TypeScrip
 
 | Path | What |
 | --- | --- |
-| `main.go` | Flags; opens the window, or copies directly when `-template` is given |
-| `sendgrid.go` | SendGrid API client |
-| `connection.go` | Source/destination accounts, including the on-behalf-of mode |
+| `main.go` | Flags; opens the window, or runs a command-line task |
+| `cli.go` | The command-line tasks: list, export, copy |
+| `sendgrid.go` | SendGrid API client, and `CopyTemplate` |
+| `copy.go` | Copying several templates at once, shared by the window and the command line |
+| `backup.go` | Backup files, which can also be copied from |
+| `connection.go` | Source/destination accounts, including the on-behalf-of modes |
 | `app.go` | The backend service the UI calls (`Connect`, `CopyTemplates`, …) |
-| `frontend/src/screens/` | The three screens |
+| `update.go` | The new-release check |
+| `frontend/src/screens/` | The three screens and the preview dialog |
 | `frontend/src/bindings/` | TypeScript bindings generated from `app.go`. Run `make bindings` after changing it. |
 | `packaging/` | Build scripts, Linux `.desktop` file and package config, Windows installer script |
 

@@ -47,19 +47,37 @@ func main() {
 	os.Exit(run())
 }
 
+// cliOptions are the command-line settings for a run without the window.
+type cliOptions struct {
+	templateIDs listFlag
+	list        bool
+	exportPath  string
+	jsonOutput  bool
+	copy        CopyOptions
+}
+
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	os.Args = stripPSNArgs(os.Args)
 
-	var templateIDs listFlag
+	var opts cliOptions
 	srcKey := flag.String("src-key", os.Getenv("SENDGRID_SRC_API_KEY"), "API key of the source (parent) account [env SENDGRID_SRC_API_KEY]")
-	dstKey := flag.String("dst-key", os.Getenv("SENDGRID_DST_API_KEY"), "API key of the destination (subuser) account [env SENDGRID_DST_API_KEY]")
+	srcSubuser := flag.String("src-subuser", os.Getenv("SENDGRID_SRC_SUBUSER"), "copy from this subuser, using -src-key as its parent [env SENDGRID_SRC_SUBUSER]")
+	importPath := flag.String("import", "", "copy from this backup `file` (written by -export) instead of an account")
+	dstKey := flag.String("dst-key", os.Getenv("SENDGRID_DST_API_KEY"), "API key of the destination account [env SENDGRID_DST_API_KEY]")
 	subuser := flag.String("dst-subuser", os.Getenv("SENDGRID_DST_SUBUSER"), "copy to this subuser using the source (parent) key instead of -dst-key [env SENDGRID_DST_SUBUSER]")
-	flag.Var(&templateIDs, "template", "template ID to copy (repeatable or comma-separated)")
-	name := flag.String("name", "", "name for the copied template (default: same as source; only valid with a single -template)")
-	activeOnly := flag.Bool("active-only", false, "copy only the active version instead of all versions")
+	flag.Var(&opts.templateIDs, "template", "template ID to copy (repeatable or comma-separated)")
+	flag.BoolVar(&opts.list, "list", false, "list the source templates and exit")
+	flag.StringVar(&opts.exportPath, "export", "", "save the -template templates (default: all) with every version to this backup `file`, instead of copying")
+	flag.StringVar(&opts.copy.Name, "name", "", "name for the copied template (default: same as source; only valid with a single -template)")
+	flag.StringVar(&opts.copy.Prefix, "prefix", "", "add this to the start of each copy's name")
+	flag.StringVar(&opts.copy.Suffix, "suffix", "", "add this to the end of each copy's name")
+	flag.BoolVar(&opts.copy.ActiveOnly, "active-only", false, "copy only the active version instead of all versions")
+	onExisting := flag.String("on-existing", string(ExistingDuplicate), "when the destination already has a template with the copy's name: duplicate, skip, or add (the versions to it)")
+	flag.BoolVar(&opts.copy.DryRun, "dry-run", false, "show what would be copied without changing the destination")
+	flag.BoolVar(&opts.jsonOutput, "json", false, "print results as JSON")
 	baseURL := flag.String("base-url", defaultBaseURL, "SendGrid API base URL (use https://api.eu.sendgrid.com for EU)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
@@ -68,10 +86,14 @@ func run() int {
 		fmt.Println(version)
 		return 0
 	}
-	conn := Connection{BaseURL: *baseURL, SourceKey: *srcKey, DestKey: *dstKey, Subuser: *subuser}
+	conn := Connection{
+		BaseURL: *baseURL, SourceKey: *srcKey, SourceSubuser: *srcSubuser, SourceFile: *importPath,
+		DestKey: *dstKey, Subuser: *subuser, ExportOnly: opts.list || opts.exportPath != "",
+	}
 
-	// No templates on the command line: open the app window.
-	if len(templateIDs) == 0 && hasDisplay() {
+	// Nothing to do on the command line: open the app window.
+	cliTask := len(opts.templateIDs) > 0 || opts.list || opts.exportPath != "" || *importPath != ""
+	if !cliTask && hasDisplay() {
 		if err := runApp(ctx, conn); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
@@ -79,39 +101,22 @@ func run() int {
 		return 0
 	}
 
+	var err error
+	if opts.copy.OnExisting, err = ParseExistingPolicy(*onExisting); err != nil {
+		return usageError("-on-existing: " + err.Error())
+	}
+	if opts.list && opts.exportPath != "" {
+		return usageError("-list and -export can't be used together")
+	}
 	if err := conn.Validate(); err != nil {
-		return usageError(err.Error() + " (-src-key, and -dst-key or -dst-subuser)")
+		return usageError(err.Error() + " (-src-key or -import, and -dst-key or -dst-subuser)")
 	}
+
 	switch {
-	case len(templateIDs) == 0:
-		return usageError("at least one -template is required")
-	case *name != "" && len(templateIDs) > 1:
-		return usageError("-name can only be used with a single -template")
+	case opts.list:
+		return cliList(ctx, conn, opts)
+	case opts.exportPath != "":
+		return cliExport(ctx, conn, opts)
 	}
-
-	src, dst := conn.Clients()
-
-	failed := 0
-	for _, id := range templateIDs {
-		t, err := CopyTemplate(ctx, src, dst, id, *name, *activeOnly)
-		if err != nil {
-			failed++
-			fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", id, err)
-			if t != nil {
-				fmt.Fprintf(os.Stderr, "     partially created destination template %s\n", t.ID)
-			}
-			continue
-		}
-		fmt.Printf("OK   %s -> %s (%q, %d version(s))\n", id, t.ID, t.Name, len(t.Versions))
-	}
-	if failed > 0 {
-		return 1
-	}
-	return 0
-}
-
-func usageError(msg string) int {
-	fmt.Fprintln(os.Stderr, "error:", msg)
-	flag.Usage()
-	return 2
+	return cliCopy(ctx, conn, opts)
 }

@@ -1,7 +1,20 @@
-import { useState, type FormEvent } from "react"
-import { ArrowRightIcon, CheckIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, LockIcon, SearchIcon, UsersIcon } from "lucide-react"
+import { useState, type FormEvent, type ReactNode } from "react"
+import {
+  ArrowRightIcon,
+  Building2Icon,
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  FileBracesIcon,
+  FolderOpenIcon,
+  KeyRoundIcon,
+  LockIcon,
+  SearchIcon,
+  TriangleAlertIcon,
+  UsersIcon,
+} from "lucide-react"
 
-import { Backend, errorMessage, isCancelled, type Connection, type Region, type Session } from "@/api"
+import { Backend, Dialogs, backupFilter, errorMessage, isCancelled, type Connection, type Region, type Session } from "@/api"
 import { Screen, ScreenHeading } from "@/screens/layout"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -14,37 +27,83 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { plural } from "@/lib/format"
 
-/** How the destination subuser is reached. */
-export type DestMode = "key" | "subuser"
+/** Where templates are copied from. */
+export type SourceMode = "key" | "subuser" | "file"
+
+/** Where templates are copied to. */
+export type DestMode = "key" | "subuser" | "parent" | "file"
+
+/** The destinations that make sense for each kind of source. */
+function destModesFor(source: SourceMode): DestMode[] {
+  switch (source) {
+    case "key":
+      return ["key", "subuser", "file"]
+    case "subuser":
+      return ["key", "subuser", "parent", "file"]
+    case "file":
+      return ["key"]
+  }
+}
+
+/** The connection to send to the backend: only the fields the chosen modes use. */
+function connectionFor(conn: Connection, source: SourceMode, dest: DestMode): Connection {
+  return {
+    baseURL: conn.baseURL,
+    sourceKey: source !== "file" ? conn.sourceKey : "",
+    sourceSubuser: source === "subuser" ? conn.sourceSubuser : "",
+    sourceFile: source === "file" ? conn.sourceFile : "",
+    destKey: dest === "key" ? conn.destKey : "",
+    subuser: dest === "subuser" ? conn.subuser : "",
+    exportOnly: dest === "file",
+  }
+}
 
 type Props = {
   regions: Region[]
   conn: Connection
-  mode: DestMode
+  sourceMode: SourceMode
+  destMode: DestMode
   onChange: (conn: Connection) => void
-  onModeChange: (mode: DestMode) => void
+  onModesChange: (source: SourceMode, dest: DestMode) => void
   onConnected: (session: Session) => void
 }
 
-export function ConnectScreen({ regions, conn, mode, onChange, onModeChange, onConnected }: Props) {
+const toggleItemClass = "flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
+
+const sourceOptions: { value: SourceMode; label: string; icon: ReactNode }[] = [
+  { value: "key", label: "Account API key", icon: <KeyRoundIcon /> },
+  { value: "subuser", label: "A subuser", icon: <UsersIcon /> },
+  { value: "file", label: "Backup file", icon: <FileBracesIcon /> },
+]
+
+const destOptions: Record<DestMode, { label: string; icon: ReactNode }> = {
+  key: { label: "Account API key", icon: <KeyRoundIcon /> },
+  subuser: { label: "A subuser", icon: <UsersIcon /> },
+  parent: { label: "Parent account", icon: <Building2Icon /> },
+  file: { label: "Backup file", icon: <FileBracesIcon /> },
+}
+
+export function ConnectScreen({ regions, conn, sourceMode, destMode, onChange, onModesChange, onConnected }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const set = (patch: Partial<Connection>) => onChange({ ...conn, ...patch })
 
+  const allowedDest = destModesFor(sourceMode)
+  const dest = allowedDest.includes(destMode) ? destMode : allowedDest[0]
+
   async function submit(e: FormEvent) {
     e.preventDefault()
-    // Only send the destination detail for the chosen mode.
-    const request: Connection = { ...conn, destKey: mode === "key" ? conn.destKey : "", subuser: mode === "subuser" ? conn.subuser : "" }
-    if (!request.sourceKey.trim()) return setError("Enter the source API key.")
-    if (mode === "key" && !request.destKey.trim()) return setError("Enter the subuser's API key.")
-    if (mode === "subuser" && !request.subuser.trim()) return setError("Enter the subuser's username.")
+    const request = connectionFor(conn, sourceMode, dest)
+    const missing = missingField(request, sourceMode, dest)
+    if (missing) return setError(missing)
 
     setBusy(true)
     setError("")
@@ -58,13 +117,16 @@ export function ConnectScreen({ regions, conn, mode, onChange, onModeChange, onC
     }
   }
 
+  const parentKeyLabel = sourceMode === "subuser" || dest === "subuser" || dest === "parent" ? "Parent API key" : "Source API key"
+  const sourceAccess = dest === "subuser" || dest === "parent" ? "full" : "read"
+
   return (
     <form onSubmit={submit} className="h-full" autoComplete="off">
       <Screen
         actions={
           <>
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <LockIcon className="size-3.5" /> Keys are only used while the app is open and are never saved.
+              <LockIcon className="size-3.5 shrink-0" /> Keys are only used while the app is open and are never saved.
             </p>
             <Button type="submit" className="ml-auto" disabled={busy}>
               {busy ? <Spinner /> : null}
@@ -76,53 +138,12 @@ export function ConnectScreen({ regions, conn, mode, onChange, onModeChange, onC
       >
         <ScreenHeading
           title="Connect your SendGrid accounts"
-          description="Templates are copied from the source account (usually the parent) to a subuser."
+          description="Copy templates between a parent account, its subusers, and backup files."
         />
 
-        <Card>
+        <Card className="shrink-0">
           <CardContent>
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="source-key">Source API key</FieldLabel>
-                <SecretInput id="source-key" value={conn.sourceKey} onChange={(v) => set({ sourceKey: v })} disabled={busy} autoFocus={!conn.sourceKey} />
-                <FieldDescription>Parent account. Needs read access to Template Engine.</FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel>Copy to the subuser using</FieldLabel>
-                <ToggleGroup
-                  type="single"
-                  variant="outline"
-                  value={mode}
-                  onValueChange={(v) => v && onModeChange(v as DestMode)}
-                  disabled={busy}
-                  className="w-full"
-                >
-                  <ToggleGroupItem value="key" className="flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary">
-                    <KeyRoundIcon /> Subuser API key
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="subuser" className="flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary">
-                    <UsersIcon /> Parent key + subuser username
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </Field>
-
-              {mode === "key" ? (
-                <Field>
-                  <FieldLabel htmlFor="dest-key">Subuser API key</FieldLabel>
-                  <SecretInput id="dest-key" value={conn.destKey} onChange={(v) => set({ destKey: v })} disabled={busy} />
-                  <FieldDescription>The subuser's own key. Needs full access to Template Engine.</FieldDescription>
-                </Field>
-              ) : (
-                <Field>
-                  <FieldLabel htmlFor="subuser">Subuser username</FieldLabel>
-                  <SubuserPicker key={conn.baseURL + conn.sourceKey} conn={conn} value={conn.subuser} onChange={(v) => set({ subuser: v })} disabled={busy} />
-                  <FieldDescription>
-                    The source (parent) key acts as this subuser, so it needs full access to Template Engine.
-                  </FieldDescription>
-                </Field>
-              )}
-
               <Field>
                 <FieldLabel htmlFor="region">Data region</FieldLabel>
                 <Select value={conn.baseURL} onValueChange={(v) => set({ baseURL: v })} disabled={busy}>
@@ -137,7 +158,122 @@ export function ConnectScreen({ regions, conn, mode, onChange, onModeChange, onC
                     ))}
                   </SelectContent>
                 </Select>
+                <FieldDescription>Both accounts must be in this region. EU accounts use the EU region.</FieldDescription>
               </Field>
+
+              <FieldSeparator />
+
+              <FieldSet>
+                <FieldLegend>Copy from</FieldLegend>
+                <FieldGroup>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={sourceMode}
+                    onValueChange={(v) => {
+                      if (!v) return
+                      const next = v as SourceMode
+                      const allowed = destModesFor(next)
+                      onModesChange(next, allowed.includes(destMode) ? destMode : allowed[0])
+                    }}
+                    disabled={busy}
+                    className="w-full"
+                    aria-label="Copy from"
+                  >
+                    {sourceOptions.map((o) => (
+                      <ToggleGroupItem key={o.value} value={o.value} className={toggleItemClass}>
+                        {o.icon} {o.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+
+                  {sourceMode === "file" ? (
+                    <Field>
+                      <FieldLabel htmlFor="source-file">Backup file</FieldLabel>
+                      <FilePicker id="source-file" value={conn.sourceFile} onChange={(v) => set({ sourceFile: v })} disabled={busy} />
+                      <FieldDescription>A file saved with "Backup file" as the destination.</FieldDescription>
+                    </Field>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="source-key">{parentKeyLabel}</FieldLabel>
+                      <SecretInput id="source-key" value={conn.sourceKey} onChange={(v) => set({ sourceKey: v })} disabled={busy} autoFocus={!conn.sourceKey} />
+                      <FieldDescription>Needs {sourceAccess} access to Template Engine.</FieldDescription>
+                    </Field>
+                  )}
+
+                  {sourceMode === "subuser" && (
+                    <Field>
+                      <FieldLabel htmlFor="source-subuser">Subuser to copy from</FieldLabel>
+                      <SubuserPicker
+                        key={conn.baseURL + conn.sourceKey}
+                        id="source-subuser"
+                        conn={conn}
+                        value={conn.sourceSubuser}
+                        onChange={(v) => set({ sourceSubuser: v })}
+                        disabled={busy}
+                      />
+                    </Field>
+                  )}
+                </FieldGroup>
+              </FieldSet>
+
+              <FieldSeparator />
+
+              <FieldSet>
+                <FieldLegend>Copy to</FieldLegend>
+                <FieldGroup>
+                  {allowedDest.length > 1 && (
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      value={dest}
+                      onValueChange={(v) => v && onModesChange(sourceMode, v as DestMode)}
+                      disabled={busy}
+                      className="w-full flex-wrap"
+                      aria-label="Copy to"
+                    >
+                      {allowedDest.map((d) => (
+                        <ToggleGroupItem key={d} value={d} className={toggleItemClass}>
+                          {destOptions[d].icon} {destOptions[d].label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  )}
+
+                  {dest === "key" && (
+                    <Field>
+                      <FieldLabel htmlFor="dest-key">Destination API key</FieldLabel>
+                      <SecretInput id="dest-key" value={conn.destKey} onChange={(v) => set({ destKey: v })} disabled={busy} />
+                      <FieldDescription>The destination account's own key. Needs full access to Template Engine.</FieldDescription>
+                    </Field>
+                  )}
+                  {dest === "subuser" && (
+                    <Field>
+                      <FieldLabel htmlFor="dest-subuser">Subuser to copy to</FieldLabel>
+                      <SubuserPicker
+                        key={conn.baseURL + conn.sourceKey}
+                        id="dest-subuser"
+                        conn={conn}
+                        value={conn.subuser}
+                        onChange={(v) => set({ subuser: v })}
+                        disabled={busy}
+                      />
+                      <FieldDescription>The parent key acts as this subuser, so you don't need the subuser's own key.</FieldDescription>
+                    </Field>
+                  )}
+                  {dest === "parent" && (
+                    <p className="text-sm text-muted-foreground">
+                      Templates are copied to the parent account that the parent API key belongs to.
+                    </p>
+                  )}
+                  {dest === "file" && (
+                    <p className="text-sm text-muted-foreground">
+                      Choose templates next, then where to save them. The file keeps every version, and can be used as the
+                      source later, from any computer.
+                    </p>
+                  )}
+                </FieldGroup>
+              </FieldSet>
             </FieldGroup>
           </CardContent>
         </Card>
@@ -152,6 +288,18 @@ export function ConnectScreen({ regions, conn, mode, onChange, onModeChange, onC
   )
 }
 
+/** Returns a message for the first required field that's empty, or "". */
+function missingField(c: Connection, source: SourceMode, dest: DestMode): string {
+  if (source === "file" && !c.sourceFile.trim()) return "Choose a backup file to copy from."
+  if (source !== "file" && !c.sourceKey.trim()) return "Enter the source API key."
+  if (source === "subuser" && !c.sourceSubuser.trim()) return "Enter the subuser to copy from."
+  if (dest === "key" && !c.destKey.trim()) return "Enter the destination API key."
+  if (dest === "subuser" && !c.subuser.trim()) return "Enter the subuser to copy to."
+  if (source === "subuser" && dest === "subuser" && c.subuser.trim().toLowerCase() === c.sourceSubuser.trim().toLowerCase())
+    return "Choose a different subuser to copy to."
+  return ""
+}
+
 type SecretInputProps = {
   id: string
   value: string
@@ -160,37 +308,91 @@ type SecretInputProps = {
   autoFocus?: boolean
 }
 
-/** A password field with a show/hide toggle. */
+/** A password field with a show/hide toggle and a hint for keys that look wrong. */
 function SecretInput({ id, value, onChange, disabled, autoFocus }: SecretInputProps) {
   const [visible, setVisible] = useState(false)
+  const trimmed = value.trim()
+  const suspicious = trimmed !== "" && !trimmed.startsWith("SG.")
   return (
-    <InputGroup>
-      <InputGroupInput
-        id={id}
-        type={visible ? "text" : "password"}
-        placeholder="SG.xxxxxxxx"
-        spellCheck={false}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        className="font-mono"
-      />
-      <InputGroupAddon align="inline-end">
-        <InputGroupButton
-          size="icon-xs"
-          aria-label={visible ? "Hide key" : "Show key"}
-          onClick={() => setVisible((v) => !v)}
+    <>
+      <InputGroup>
+        <InputGroupInput
+          id={id}
+          type={visible ? "text" : "password"}
+          placeholder="SG.xxxxxxxx"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-        >
-          {visible ? <EyeOffIcon /> : <EyeIcon />}
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
+          autoFocus={autoFocus}
+          aria-invalid={suspicious || undefined}
+          aria-describedby={suspicious ? `${id}-hint` : undefined}
+          className="font-mono"
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton
+            size="icon-xs"
+            aria-label={visible ? "Hide key" : "Show key"}
+            onClick={() => setVisible((v) => !v)}
+            disabled={disabled}
+          >
+            {visible ? <EyeOffIcon /> : <EyeIcon />}
+          </InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+      {suspicious && (
+        <p id={`${id}-hint`} className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+          <TriangleAlertIcon className="size-3.5 shrink-0" /> SendGrid API keys start with "SG." Check the whole key was
+          copied.
+        </p>
+      )}
+    </>
+  )
+}
+
+type FilePickerProps = {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}
+
+/** A read-only path field with a "Choose…" button that opens a file dialog. */
+function FilePicker({ id, value, onChange, disabled }: FilePickerProps) {
+  const [error, setError] = useState("")
+
+  async function choose() {
+    setError("")
+    try {
+      const path = await Dialogs.OpenFile({
+        Title: "Choose a template backup",
+        Filters: [backupFilter],
+        CanChooseFiles: true,
+        AllowsMultipleSelection: false,
+      })
+      if (typeof path === "string" && path) onChange(path)
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }
+
+  return (
+    <>
+      <InputGroup>
+        <InputGroupInput id={id} readOnly placeholder="No file chosen" value={value} disabled={disabled} onClick={choose} className="cursor-pointer" />
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton onClick={choose} disabled={disabled}>
+            <FolderOpenIcon /> Choose…
+          </InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </>
   )
 }
 
 type SubuserPickerProps = {
+  id: string
   conn: Connection
   value: string
   onChange: (value: string) => void
@@ -198,7 +400,7 @@ type SubuserPickerProps = {
 }
 
 /** A username field whose "Find" button lists the parent account's subusers. */
-function SubuserPicker({ conn, value, onChange, disabled }: SubuserPickerProps) {
+function SubuserPicker({ id, conn, value, onChange, disabled }: SubuserPickerProps) {
   const [subusers, setSubusers] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -225,7 +427,7 @@ function SubuserPicker({ conn, value, onChange, disabled }: SubuserPickerProps) 
         <PopoverAnchor asChild>
           <InputGroup>
             <InputGroupInput
-              id="subuser"
+              id={id}
               placeholder="Type a username or click Find"
               spellCheck={false}
               value={value}
@@ -244,7 +446,7 @@ function SubuserPicker({ conn, value, onChange, disabled }: SubuserPickerProps) 
             <CommandInput placeholder="Search subusers…" />
             <CommandList>
               <CommandEmpty>No subusers found.</CommandEmpty>
-              <CommandGroup heading={`${subusers?.length ?? 0} active subuser(s)`}>
+              <CommandGroup heading={plural(subusers?.length ?? 0, "active subuser")}>
                 {subusers?.map((name) => (
                   <CommandItem
                     key={name}

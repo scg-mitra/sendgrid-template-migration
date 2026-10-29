@@ -42,6 +42,8 @@ func newFakeSendGrid(t *testing.T, apiKey string, templates ...Template) (*fakeS
 	mux.HandleFunc("GET /v3/templates/{id}/versions/{vid}", f.getVersion)
 	mux.HandleFunc("POST /v3/templates", f.create)
 	mux.HandleFunc("POST /v3/templates/{id}/versions", f.createVersion)
+	mux.HandleFunc("DELETE /v3/templates/{id}", f.deleteTemplate)
+	mux.HandleFunc("DELETE /v3/templates/{id}/versions/{vid}", f.deleteVersion)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -67,7 +69,9 @@ func newFakeSendGrid(t *testing.T, apiKey string, templates ...Template) (*fakeS
 		mux.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	return f, NewClient(srv.URL, apiKey)
+	c := NewClient(srv.URL, apiKey)
+	c.RetryWait = time.Millisecond
+	return f, c
 }
 
 func (f *fakeSendGrid) writeJSON(w http.ResponseWriter, status int, v any) {
@@ -165,6 +169,56 @@ func (f *fakeSendGrid) createVersion(w http.ResponseWriter, r *http.Request) {
 	f.writeJSON(w, http.StatusCreated, in)
 }
 
+func (f *fakeSendGrid) deleteTemplate(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := r.PathValue("id")
+	if _, ok := f.templates[id]; !ok {
+		f.writeError(w, http.StatusNotFound, "template not found")
+		return
+	}
+	delete(f.templates, id)
+	f.order = slices.DeleteFunc(f.order, func(s string) bool { return s == id })
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (f *fakeSendGrid) deleteVersion(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id, vid := r.PathValue("id"), r.PathValue("vid")
+	tpl, ok := f.templates[id]
+	n := len(tpl.Versions)
+	tpl.Versions = slices.DeleteFunc(tpl.Versions, func(v Version) bool { return v.ID == vid })
+	if !ok || len(tpl.Versions) == n {
+		f.writeError(w, http.StatusNotFound, "version not found")
+		return
+	}
+	f.templates[id] = tpl
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// createDirect adds an empty template, bypassing HTTP.
+func (f *fakeSendGrid) createDirect(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextID++
+	id := fmt.Sprintf("d-direct%d", f.nextID)
+	f.templates[id] = Template{ID: id, Name: name, Generation: "dynamic"}
+	f.order = append(f.order, id)
+}
+
+func (f *fakeSendGrid) setFail(pattern string, status int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fail[pattern] = status
+}
+
+func (f *fakeSendGrid) templateCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.templates)
+}
+
 func (f *fakeSendGrid) setSubuser(name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -246,9 +300,14 @@ func TestCopyTemplate(t *testing.T) {
 			_, src := newFakeSendGrid(t, "src", tt.source)
 			dstFake, dst := newFakeSendGrid(t, "dst")
 
-			got, err := CopyTemplate(context.Background(), src, dst, tt.source.ID, tt.nameOverride, tt.activeOnly)
+			opts := CopyOptions{Name: tt.nameOverride, ActiveOnly: tt.activeOnly}
+			out, err := CopyTemplate(context.Background(), src, dst, tt.source.ID, opts, nil)
 			if err != nil {
 				t.Fatalf("CopyTemplate() error = %v", err)
+			}
+			got := out.Template
+			if out.Action != ActionCreated || out.SourceName != tt.source.Name || out.Versions != len(tt.wantVersions) {
+				t.Errorf("outcome = %+v, want created from %q with %d versions", out, tt.source.Name, len(tt.wantVersions))
 			}
 
 			stored := dstFake.template(got.ID)
@@ -295,13 +354,15 @@ func TestCopyTemplateErrors(t *testing.T) {
 		srcFail     string // mux pattern to fail on the source
 		dstFail     string // mux pattern to fail on the destination
 		wantStatus  int
-		wantPartial bool // a destination template was created
+		cleanupFail bool // removing the partial copy fails too
+		wantPartial bool // a partial destination template is reported
 		wantDstIdle bool // nothing was sent to the destination
 	}{
 		{name: "unknown template", templateID: "d-missing", wantStatus: http.StatusNotFound, wantDstIdle: true},
 		{name: "source version fetch fails", templateID: welcome.ID, srcFail: "GET /v3/templates/{id}/versions/{vid}", wantStatus: http.StatusInternalServerError, wantDstIdle: true},
 		{name: "destination forbids create", templateID: welcome.ID, dstFail: "POST /v3/templates", wantStatus: http.StatusForbidden},
-		{name: "version create fails", templateID: welcome.ID, dstFail: "POST /v3/templates/{id}/versions", wantStatus: http.StatusBadRequest, wantPartial: true},
+		{name: "version create fails, partial copy removed", templateID: welcome.ID, dstFail: "POST /v3/templates/{id}/versions", wantStatus: http.StatusBadRequest},
+		{name: "version create and cleanup fail", templateID: welcome.ID, dstFail: "POST /v3/templates/{id}/versions", wantStatus: http.StatusBadRequest, cleanupFail: true, wantPartial: true},
 	}
 
 	for _, tt := range tests {
@@ -315,14 +376,20 @@ func TestCopyTemplateErrors(t *testing.T) {
 			if tt.dstFail != "" {
 				dstFake.fail[tt.dstFail] = tt.wantStatus
 			}
+			if tt.cleanupFail {
+				dstFake.fail["DELETE /v3/templates/{id}"] = http.StatusForbidden
+			}
 
-			got, err := CopyTemplate(context.Background(), src, dst, tt.templateID, "", false)
+			out, err := CopyTemplate(context.Background(), src, dst, tt.templateID, CopyOptions{}, nil)
 			var apiErr *APIError
 			if !errors.As(err, &apiErr) || apiErr.StatusCode != tt.wantStatus {
 				t.Fatalf("CopyTemplate() error = %v, want APIError with status %d", err, tt.wantStatus)
 			}
-			if (got != nil) != tt.wantPartial {
-				t.Errorf("partial template returned = %v, want %v", got != nil, tt.wantPartial)
+			if (out.Template != nil) != tt.wantPartial {
+				t.Errorf("partial template returned = %v, want %v", out.Template != nil, tt.wantPartial)
+			}
+			if n := dstFake.templateCount(); (n > 0) != tt.wantPartial {
+				t.Errorf("destination has %d templates left, wantPartial %v", n, tt.wantPartial)
 			}
 			if n := dstFake.callCount(); tt.wantDstIdle && n != 0 {
 				t.Errorf("destination received %d calls, want 0", n)
@@ -439,7 +506,9 @@ func TestAPIError(t *testing.T) {
 			}))
 			t.Cleanup(srv.Close)
 
-			_, err := NewClient(srv.URL, "k").ListTemplates(context.Background())
+			c := NewClient(srv.URL, "k")
+			c.RetryWait = time.Millisecond
+			_, err := c.ListTemplates(context.Background())
 			var apiErr *APIError
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("error = %v, want *APIError", err)
@@ -632,6 +701,14 @@ func TestConnectionValidate(t *testing.T) {
 		{name: "blank source key", conn: Connection{SourceKey: "  ", Subuser: "acme"}, wantErr: true},
 		{name: "no destination", conn: Connection{SourceKey: "src"}, wantErr: true},
 		{name: "blank username", conn: Connection{SourceKey: "src", Subuser: " "}, wantErr: true},
+		{name: "subuser to parent", conn: Connection{SourceKey: "src", SourceSubuser: "acme"}},
+		{name: "subuser to another subuser", conn: Connection{SourceKey: "src", SourceSubuser: "acme", Subuser: "beta"}},
+		{name: "subuser to itself", conn: Connection{SourceKey: "src", SourceSubuser: "acme", Subuser: "ACME"}, wantErr: true},
+		{name: "export only", conn: Connection{SourceKey: "src", ExportOnly: true}},
+		{name: "backup file to key", conn: Connection{SourceFile: "b.json", DestKey: "dst"}},
+		{name: "backup file needs a destination", conn: Connection{SourceFile: "b.json"}, wantErr: true},
+		{name: "backup file to subuser needs parent key", conn: Connection{SourceFile: "b.json", Subuser: "acme"}, wantErr: true},
+		{name: "backup file to subuser with parent key", conn: Connection{SourceFile: "b.json", SourceKey: "src", Subuser: "acme"}},
 	}
 
 	for _, tt := range tests {
@@ -648,21 +725,37 @@ func TestConnectionClients(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		conn           Connection
-		wantDstKey     string
-		wantOnBehalfOf string
+		name              string
+		conn              Connection
+		wantSrcOnBehalfOf string
+		wantNoDst         bool
+		wantDstKey        string
+		wantOnBehalfOf    string
 	}{
 		{name: "subuser key", conn: Connection{SourceKey: "src", DestKey: " dst "}, wantDstKey: "dst"},
 		{name: "parent key acts as subuser", conn: Connection{SourceKey: "src", Subuser: " acme "}, wantDstKey: "src", wantOnBehalfOf: "acme"},
+		{name: "subuser to parent", conn: Connection{SourceKey: "src", SourceSubuser: "acme"}, wantSrcOnBehalfOf: "acme", wantDstKey: "src"},
+		{name: "subuser to subuser", conn: Connection{SourceKey: "src", SourceSubuser: "acme", Subuser: "beta"}, wantSrcOnBehalfOf: "acme", wantDstKey: "src", wantOnBehalfOf: "beta"},
+		{name: "export only", conn: Connection{SourceKey: "src", Subuser: "beta", ExportOnly: true}, wantNoDst: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			src, dst := tt.conn.Clients()
-			if src.APIKey != "src" || src.OnBehalfOf != "" {
-				t.Errorf("source client key %q on-behalf-of %q, want src and none", src.APIKey, src.OnBehalfOf)
+			s, err := tt.conn.Source()
+			if err != nil {
+				t.Fatalf("Source() error = %v", err)
+			}
+			src, ok := s.(*Client)
+			if !ok || src.APIKey != "src" || src.OnBehalfOf != tt.wantSrcOnBehalfOf {
+				t.Errorf("source = %+v, want client with key src on behalf of %q", s, tt.wantSrcOnBehalfOf)
+			}
+			dst := tt.conn.Destination()
+			if tt.wantNoDst {
+				if dst != nil {
+					t.Errorf("Destination() = %+v, want nil", dst)
+				}
+				return
 			}
 			if dst.APIKey != tt.wantDstKey || dst.OnBehalfOf != tt.wantOnBehalfOf {
 				t.Errorf("destination client key %q on-behalf-of %q, want %q and %q",
@@ -692,15 +785,15 @@ func TestCopyTemplateOnBehalfOfSubuser(t *testing.T) {
 			dstFake.setSubuser("acme")
 
 			conn := Connection{BaseURL: src.BaseURL, SourceKey: "parent", Subuser: tt.subuser}
-			_, dst := conn.Clients()
+			dst := conn.Destination()
 			dst.BaseURL = dstClient.BaseURL // the subuser lives on the second fake server
 
-			got, err := CopyTemplate(context.Background(), src, dst, welcome.ID, "", false)
+			out, err := CopyTemplate(context.Background(), src, dst, welcome.ID, CopyOptions{}, nil)
 			if tt.wantStatus == 0 {
 				if err != nil {
 					t.Fatalf("CopyTemplate() error = %v", err)
 				}
-				if n := len(dstFake.template(got.ID).Versions); n != 2 {
+				if n := len(dstFake.template(out.Template.ID).Versions); n != 2 {
 					t.Errorf("subuser template has %d versions, want 2", n)
 				}
 				return
@@ -727,6 +820,7 @@ func TestDescribeDestError(t *testing.T) {
 		{name: "subuser 401", conn: Connection{Subuser: "acme"}, err: &APIError{StatusCode: 401}, want: subuserMsg},
 		{name: "subuser key 403", conn: Connection{DestKey: "k"}, err: &APIError{StatusCode: 403}, want: "this API key needs full access to Template Engine."},
 		{name: "subuser other error", conn: Connection{Subuser: "acme"}, err: errors.New("timeout"), want: "timeout"},
+		{name: "subuser named but own key used", conn: Connection{Subuser: "acme", DestKey: "k"}, err: &APIError{StatusCode: 403}, want: "this API key needs full access to Template Engine."},
 	}
 
 	for _, tt := range tests {

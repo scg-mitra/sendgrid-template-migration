@@ -8,10 +8,13 @@ export {
 
 export {
     Connection,
+    CopyOptions,
     CopyProgress,
     CopyResult,
     Defaults,
+    Preview,
     Region,
     Session,
-    TemplateInfo
+    TemplateInfo,
+    UpdateInfo
 } from "./models.js";

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,8 +63,15 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
+// Retry limits for Client.do.
+const (
+	maxRateLimitRetries = 5 // 429 responses: the request wasn't processed, so any method is retried
+	maxServerRetries    = 3 // 5xx responses and network errors: only idempotent methods are retried
+)
+
 // do sends a JSON request and decodes the response into out (if non-nil).
-// It retries on 429 rate-limit responses.
+// It retries on 429 rate-limit responses, and for GET and DELETE requests
+// also on 5xx responses and network errors.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var payload []byte
 	if body != nil {
@@ -72,51 +80,98 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 			return fmt.Errorf("encoding request body: %w", err)
 		}
 	}
+	// A POST that failed with a server or network error may still have been
+	// applied, so retrying it could create a duplicate.
+	idempotent := method == http.MethodGet || method == http.MethodDelete
 
-	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, bytes.NewReader(payload))
-		if err != nil {
-			return fmt.Errorf("building request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
-		req.Header.Set("Content-Type", "application/json")
-		if c.OnBehalfOf != "" {
-			req.Header.Set("On-Behalf-Of", c.OnBehalfOf)
-		}
-
-		resp, err := c.HTTP.Do(req)
-		if err != nil {
-			return fmt.Errorf("%s %s: %w", method, path, err)
-		}
-		data, err := io.ReadAll(resp.Body)
-		// The body has been fully read; a close error can't affect the result.
-		_ = resp.Body.Close()
-		if err != nil {
-			return fmt.Errorf("reading response: %w", err)
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests && attempt < 5 {
-			wait := c.RetryWait
-			if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
-				if d := time.Until(time.Unix(reset, 0)); d > 0 {
-					wait = d + 500*time.Millisecond
-				}
+	rateLimited, serverErrors := 0, 0
+	for {
+		status, header, data, err := c.send(ctx, method, path, payload)
+		retry := false
+		switch {
+		case err != nil:
+			if ctx.Err() != nil || !idempotent || serverErrors >= maxServerRetries {
+				return err
 			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(wait):
+			serverErrors++
+			retry = true
+		case status == http.StatusTooManyRequests && rateLimited < maxRateLimitRetries:
+			rateLimited++
+			retry = true
+		case status >= 500 && idempotent && serverErrors < maxServerRetries:
+			serverErrors++
+			retry = true
+		}
+		if retry {
+			if err := sleep(ctx, c.retryDelay(status, header, serverErrors)); err != nil {
+				return err
 			}
 			continue
 		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return newAPIError(method, path, resp, data)
+
+		if status < 200 || status >= 300 {
+			return newAPIError(method, path, status, data)
 		}
-		if out != nil {
+		if out != nil && len(data) > 0 {
 			if err := json.Unmarshal(data, out); err != nil {
 				return fmt.Errorf("decoding %s %s response: %w", method, path, err)
 			}
 		}
+		return nil
+	}
+}
+
+// send makes one HTTP request and returns the response status, headers and body.
+func (c *Client) send(ctx context.Context, method, path string, payload []byte) (int, http.Header, []byte, error) {
+	var body io.Reader
+	if payload != nil {
+		body = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("building request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	if c.OnBehalfOf != "" {
+		req.Header.Set("On-Behalf-Of", c.OnBehalfOf)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("%s %s: %w", method, path, err)
+	}
+	data, err := io.ReadAll(resp.Body)
+	// The body has been fully read; a close error can't affect the result.
+	_ = resp.Body.Close()
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("reading response: %w", err)
+	}
+	return resp.StatusCode, resp.Header, data, nil
+}
+
+// retryDelay is how long to wait before retrying. After a 429 it honours
+// SendGrid's X-RateLimit-Reset header; otherwise it backs off exponentially.
+func (c *Client) retryDelay(status int, header http.Header, serverErrors int) time.Duration {
+	if status == http.StatusTooManyRequests {
+		if reset, err := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+			if d := time.Until(time.Unix(reset, 0)); d > 0 {
+				return d + 500*time.Millisecond
+			}
+		}
+		return c.RetryWait
+	}
+	return c.RetryWait << (serverErrors - 1)
+}
+
+// sleep waits for d, or returns ctx's error if it is cancelled first.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
 		return nil
 	}
 }
@@ -134,8 +189,8 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s %s: %s: %s", e.Method, e.Path, e.Status, e.Message)
 }
 
-func newAPIError(method, path string, resp *http.Response, body []byte) *APIError {
-	e := &APIError{Method: method, Path: path, StatusCode: resp.StatusCode, Status: resp.Status}
+func newAPIError(method, path string, status int, body []byte) *APIError {
+	e := &APIError{Method: method, Path: path, StatusCode: status, Status: fmt.Sprintf("%d %s", status, http.StatusText(status))}
 	if i := strings.IndexByte(e.Path, '?'); i >= 0 {
 		e.Path = e.Path[:i]
 	}
@@ -252,53 +307,186 @@ func (c *Client) CreateVersion(ctx context.Context, templateID string, v Version
 	return &out, nil
 }
 
-// CopyTemplate copies the template with the given ID from src to dst and
-// returns the newly created template in dst.
-// If creating a version fails after the template was created, the partial
-// template is returned along with the error.
-func CopyTemplate(ctx context.Context, src, dst *Client, templateID, nameOverride string, activeOnly bool) (*Template, error) {
+// DeleteTemplate deletes a template and all of its versions.
+func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/v3/templates/"+url.PathEscape(id), nil, nil)
+}
+
+// DeleteVersion deletes one version of a template.
+func (c *Client) DeleteVersion(ctx context.Context, templateID, versionID string) error {
+	path := "/v3/templates/" + url.PathEscape(templateID) + "/versions/" + url.PathEscape(versionID)
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// templateReader reads templates with full version content: a SendGrid
+// account (*Client) or a backup file (*Backup).
+type templateReader interface {
+	GetTemplate(ctx context.Context, id string) (*Template, error)
+	GetVersion(ctx context.Context, templateID, versionID string) (*Version, error)
+}
+
+// The values of CopyOptions.OnExisting: what CopyTemplate does when the
+// destination already has a template with the copy's name. They are plain
+// strings rather than a named type so the generated TypeScript bindings
+// don't use enums.
+const (
+	ExistingDuplicate   = "duplicate" // create another template with the same name
+	ExistingSkip        = "skip"      // leave the destination unchanged
+	ExistingAddVersions = "add"       // add the versions to the existing template
+)
+
+// ParseExistingPolicy parses a policy name, as given to -on-existing.
+func ParseExistingPolicy(s string) (string, error) {
+	switch p := strings.ToLower(strings.TrimSpace(s)); p {
+	case ExistingDuplicate, ExistingSkip, ExistingAddVersions:
+		return p, nil
+	case "":
+		return ExistingDuplicate, nil
+	}
+	return "", fmt.Errorf("unknown policy %q (want duplicate, skip or add)", s)
+}
+
+// CopyOptions controls how CopyTemplate copies a template.
+type CopyOptions struct {
+	// Name is the name for the copy. If empty, the copy is named
+	// Prefix + the source template's name + Suffix.
+	Name       string `json:"name,omitempty"`
+	Prefix     string `json:"prefix"`
+	Suffix     string `json:"suffix"`
+	ActiveOnly bool   `json:"activeOnly"`
+	OnExisting string `json:"onExisting"` // ExistingDuplicate (the default), ExistingSkip or ExistingAddVersions
+	DryRun     bool   `json:"-"`          // report what would happen without changing the destination
+}
+
+// copyName returns the destination name for a source template named name.
+func (o CopyOptions) copyName(name string) string {
+	if o.Name != "" {
+		return o.Name
+	}
+	return o.Prefix + name + o.Suffix
+}
+
+// The values of CopyOutcome.Action and CopyResult.Action: what CopyTemplate
+// did with a template.
+const (
+	ActionCreated = "created" // a new destination template was created
+	ActionAdded   = "added"   // versions were added to an existing template
+	ActionSkipped = "skipped" // the name already existed, so nothing was done
+)
+
+// CopyOutcome describes the result of CopyTemplate.
+type CopyOutcome struct {
+	SourceName string
+	Action     string
+	// Template is the destination template: the one created or added to, or
+	// the existing one when skipped. Its Versions are those created by the
+	// copy. After a failed copy it is set only if a partial copy was left
+	// behind because removing it failed too.
+	Template *Template
+	// Versions is the number of versions copied (or that would be, in a dry run).
+	Versions int
+}
+
+// cleanupTimeout bounds how long removing a failed partial copy may take.
+const cleanupTimeout = 30 * time.Second
+
+// CopyTemplate copies the template with the given ID from src to dst.
+// existing maps the names of templates already in dst to their IDs; it is
+// consulted according to opts.OnExisting.
+//
+// If creating a version fails, whatever the copy created in dst is removed
+// again (even if ctx was cancelled), so a failed copy leaves no trace.
+func CopyTemplate(ctx context.Context, src templateReader, dst *Client, templateID string, opts CopyOptions, existing map[string]string) (CopyOutcome, error) {
+	var out CopyOutcome
 	t, err := src.GetTemplate(ctx, templateID)
 	if err != nil {
-		return nil, fmt.Errorf("fetching source template %s: %w", templateID, err)
+		return out, fmt.Errorf("fetching source template %s: %w", templateID, err)
+	}
+	out.SourceName = t.Name
+	name := opts.copyName(t.Name)
+
+	out.Action = ActionCreated
+	existingID, exists := existing[name]
+	if exists {
+		switch opts.OnExisting {
+		case ExistingSkip:
+			out.Action = ActionSkipped
+			out.Template = &Template{ID: existingID, Name: name}
+			return out, nil
+		case ExistingAddVersions:
+			out.Action = ActionAdded
+		}
 	}
 
-	// Fetch full version content before creating anything in the destination,
-	// so a read failure doesn't leave an empty template behind.
-	versions := make([]Version, 0, len(t.Versions))
+	summaries := make([]Version, 0, len(t.Versions))
 	for _, vs := range t.Versions {
-		if activeOnly && vs.Active != 1 {
-			continue
+		if !opts.ActiveOnly || vs.Active == 1 {
+			summaries = append(summaries, vs)
 		}
+	}
+	out.Versions = len(summaries)
+	if opts.DryRun {
+		out.Template = &Template{ID: existingID, Name: name}
+		return out, nil
+	}
+
+	// Fetch full version content before changing the destination, so a read
+	// failure doesn't leave anything behind.
+	versions := make([]Version, 0, len(summaries))
+	for _, vs := range summaries {
 		v, err := src.GetVersion(ctx, templateID, vs.ID)
 		if err != nil {
-			return nil, fmt.Errorf("fetching version %s: %w", vs.ID, err)
+			return out, fmt.Errorf("fetching version %s: %w", vs.ID, err)
 		}
 		versions = append(versions, *v)
 	}
 
-	name := t.Name
-	if nameOverride != "" {
-		name = nameOverride
-	}
-	generation := t.Generation
-	if generation == "" {
-		generation = "dynamic"
-	}
-
-	created, err := dst.CreateTemplate(ctx, name, generation)
-	if err != nil {
-		return nil, fmt.Errorf("creating destination template: %w", err)
+	var target *Template
+	if out.Action == ActionAdded {
+		target = &Template{ID: existingID, Name: name}
+	} else {
+		generation := t.Generation
+		if generation == "" {
+			generation = "dynamic"
+		}
+		if target, err = dst.CreateTemplate(ctx, name, generation); err != nil {
+			return out, fmt.Errorf("creating destination template: %w", err)
+		}
+		target.Versions = nil
 	}
 
 	// Create inactive versions first and the active one last so it ends up
 	// as the active version in the destination.
 	sort.SliceStable(versions, func(i, j int) bool { return versions[i].Active < versions[j].Active })
 	for _, v := range versions {
-		nv, err := dst.CreateVersion(ctx, created.ID, v)
+		nv, err := dst.CreateVersion(ctx, target.ID, v)
 		if err != nil {
-			return created, fmt.Errorf("creating version %q: %w", v.Name, err)
+			err = fmt.Errorf("creating version %q: %w", v.Name, err)
+			if cerr := undoCopy(ctx, dst, target, out.Action); cerr != nil {
+				out.Template = target
+				return out, errors.Join(err, fmt.Errorf("removing the partial copy: %w", cerr))
+			}
+			return out, err
 		}
-		created.Versions = append(created.Versions, *nv)
+		target.Versions = append(target.Versions, *nv)
 	}
-	return created, nil
+	out.Template = target
+	return out, nil
+}
+
+// undoCopy removes what a failed copy created in dst: the whole template if
+// it was new, or just the added versions.
+func undoCopy(ctx context.Context, dst *Client, target *Template, action string) error {
+	// Clean up even if the copy failed because ctx was cancelled.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	if action == ActionCreated {
+		return dst.DeleteTemplate(ctx, target.ID)
+	}
+	for _, v := range target.Versions {
+		if err := dst.DeleteVersion(ctx, target.ID, v.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

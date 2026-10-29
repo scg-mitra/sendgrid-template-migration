@@ -3,8 +3,9 @@
 
 /**
  * App is the backend for the window. Its exported methods are called from
- * frontend/app.js; a context.Context first parameter is supplied by Wails and
- * is cancelled if the call is cancelled or the window closes.
+ * the frontend (see frontend/src/api.ts); a context.Context first parameter
+ * is supplied by Wails and is cancelled if the call is cancelled or the
+ * window closes.
  * @module
  */
 
@@ -17,21 +18,32 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * Connect checks access to both accounts and returns the source templates.
+ * CheckForUpdate returns the latest release if it is newer than the running
+ * version, or nil if it isn't or this is a development build.
+ */
+export function CheckForUpdate(): $CancellablePromise<$models.UpdateInfo | null> {
+    return $Call.ByID(2347956003).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * Connect checks access to both sides and returns the source templates.
  */
 export function Connect(conn: $models.Connection): $CancellablePromise<$models.Session | null> {
     return $Call.ByID(164877153, conn).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
 /**
  * CopyTemplates copies the given source templates to the destination,
  * emitting eventCopyProgress after each one, and returns all results.
+ * opts.Name and opts.DryRun are ignored.
  */
-export function CopyTemplates(ids: string[], activeOnly: boolean): $CancellablePromise<$models.CopyResult[]> {
-    return $Call.ByID(3316041407, ids, activeOnly).then(($result: any) => {
-        return $$createType3($result);
+export function CopyTemplates(ids: string[], opts: $models.CopyOptions): $CancellablePromise<$models.CopyResult[]> {
+    return $Call.ByID(3316041407, ids, opts).then(($result: any) => {
+        return $$createType5($result);
     });
 }
 
@@ -41,8 +53,16 @@ export function CopyTemplates(ids: string[], activeOnly: boolean): $CancellableP
  */
 export function Defaults(): $CancellablePromise<$models.Defaults> {
     return $Call.ByID(2191024687).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
+}
+
+/**
+ * ExportTemplates saves the given source templates, with the full content of
+ * every version, to a backup file at path. It returns how many were saved.
+ */
+export function ExportTemplates(ids: string[], path: string): $CancellablePromise<number> {
+    return $Call.ByID(319993006, ids, path);
 }
 
 /**
@@ -51,14 +71,36 @@ export function Defaults(): $CancellablePromise<$models.Defaults> {
  */
 export function ListSubusers(baseURL: string, sourceKey: string): $CancellablePromise<string[]> {
     return $Call.ByID(1021596079, baseURL, sourceKey).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
+/**
+ * PreviewTemplate returns the active version of a source template, or its
+ * first version if none is active. It returns nil if there are no versions.
+ */
+export function PreviewTemplate(id: string): $CancellablePromise<$models.Preview | null> {
+    return $Call.ByID(2211097597, id).then(($result: any) => {
+        return $$createType9($result);
+    });
+}
+
+/**
+ * SaveResultsCSV writes copy results to a CSV file at path, for keeping a
+ * record of which new template ID replaced which old one.
+ */
+export function SaveResultsCSV(results: $models.CopyResult[], path: string): $CancellablePromise<void> {
+    return $Call.ByID(1862359566, results, path);
+}
+
 // Private type creation functions
-const $$createType0 = $models.Session.createFrom;
+const $$createType0 = $models.UpdateInfo.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.CopyResult.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $models.Defaults.createFrom;
-const $$createType5 = $Create.Array($Create.Any);
+const $$createType2 = $models.Session.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $models.CopyResult.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.Defaults.createFrom;
+const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = $models.Preview.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
