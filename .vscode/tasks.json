@@ -32,9 +32,12 @@
       "problemMatcher": {
         "owner": "vite",
         "pattern": { "regexp": "^__never_matches__$" },
+        // Vite prints "VITE vX ready in N ms" on one line, and VS Code skips the
+        // end check on a line that matches beginsPattern, so begin on npm's
+        // "> vite" echo instead.
         "background": {
-          "activesBegins": true,
-          "beginsPattern": "VITE",
+          "activeBegins": true,
+          "beginsPattern": "^\\s*> vite\\b",
           "endsPattern": "ready in"
         }
       }

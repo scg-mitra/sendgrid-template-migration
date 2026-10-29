@@ -10,6 +10,18 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-29
+
+### Changed
+
+- The window opens larger (1040×720), and the Connect screen shows "Copy
+  from" and "Copy to" side by side, so everything fits without scrolling.
+- Only long lists scroll: the copy results list now scrolls on its own,
+  keeping the progress bar and actions in view.
+- Shorter labels on the source and destination buttons ("API key",
+  "Subuser", "Parent").
+- New README screenshots, including the Connect screen.
+
 ## [1.1.2] - 2026-10-29
 
 ### Fixed
@@ -64,7 +76,8 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 - Command-line mode (`-template`) for scripted copies.
 - Rate-limit retries and plain-language error messages.
 
-[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.0.0...v1.1.0

@@ -65,10 +65,10 @@ func runApp(ctx context.Context, conn Connection) error {
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     appTitle,
-		Width:     880,
-		Height:    700,
-		MinWidth:  640,
-		MinHeight: 520,
+		Width:     1040,
+		Height:    720,
+		MinWidth:  720,
+		MinHeight: 560,
 		URL:       "/",
 	})
 

@@ -35,12 +35,14 @@ Open the app from your app launcher, Start menu or Applications folder. It walks
 
    | Copy from | Copy to |
    | --- | --- |
-   | **Account API key:** any account's key, usually the parent's. Needs read access to Template Engine. | **Account API key:** the destination account's own key, with full access to Template Engine. |
-   | **A subuser:** the parent key acting as one of its subusers (SendGrid's `on-behalf-of`). | **A subuser:** the parent key acting as the subuser, so you don't need the subuser's own key. The parent key needs full access to Template Engine. |
-   | **Backup file:** a file saved earlier by this app. | **Parent account:** when copying from a subuser, back to the parent the key belongs to. |
+   | **API key:** any account's key, usually the parent's. Needs read access to Template Engine. | **API key:** the destination account's own key, with full access to Template Engine. |
+   | **Subuser:** the parent key acting as one of its subusers (SendGrid's `on-behalf-of`). | **Subuser:** the parent key acting as the subuser, so you don't need the subuser's own key. The parent key needs full access to Template Engine. |
+   | **Backup file:** a file saved earlier by this app. | **Parent:** when copying from a subuser, back to the parent the key belongs to. |
    | | **Backup file:** save the templates to a file instead of copying them. |
 
    **Find** lists the parent's active subusers to pick from (needs read access to Subuser Management). Both sides are checked before you continue. Keys are never saved.
+
+   ![Connect screen](assets/screenshot-connect.png)
 2. **Choose templates:** search, filter by type, hide templates that are already in the destination, and click the eye icon to preview a template. Shift-click selects a range. Templates whose name already exists in the destination are flagged. **Back up…** saves the selected templates to a file.
 
    **Copy** then asks how to copy them:

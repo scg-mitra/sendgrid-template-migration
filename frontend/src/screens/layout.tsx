@@ -5,10 +5,10 @@ export function Screen({ children, actions }: { children: ReactNode; actions: Re
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex h-full max-w-3xl flex-col gap-6 px-6 py-8">{children}</div>
+        <div className="mx-auto flex h-full max-w-5xl flex-col gap-6 px-6 py-6">{children}</div>
       </div>
       <footer className="border-t bg-muted/30">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-3">{actions}</div>
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-6 py-3">{actions}</div>
       </footer>
     </div>
   )

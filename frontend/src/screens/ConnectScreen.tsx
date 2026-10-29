@@ -27,7 +27,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field"
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -79,15 +79,15 @@ type Props = {
 const toggleItemClass = "flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
 
 const sourceOptions: { value: SourceMode; label: string; icon: ReactNode }[] = [
-  { value: "key", label: "Account API key", icon: <KeyRoundIcon /> },
-  { value: "subuser", label: "A subuser", icon: <UsersIcon /> },
+  { value: "key", label: "API key", icon: <KeyRoundIcon /> },
+  { value: "subuser", label: "Subuser", icon: <UsersIcon /> },
   { value: "file", label: "Backup file", icon: <FileBracesIcon /> },
 ]
 
 const destOptions: Record<DestMode, { label: string; icon: ReactNode }> = {
-  key: { label: "Account API key", icon: <KeyRoundIcon /> },
-  subuser: { label: "A subuser", icon: <UsersIcon /> },
-  parent: { label: "Parent account", icon: <Building2Icon /> },
+  key: { label: "API key", icon: <KeyRoundIcon /> },
+  subuser: { label: "Subuser", icon: <UsersIcon /> },
+  parent: { label: "Parent", icon: <Building2Icon /> },
   file: { label: "Backup file", icon: <FileBracesIcon /> },
 }
 
@@ -144,10 +144,13 @@ export function ConnectScreen({ regions, conn, sourceMode, destMode, onChange, o
         <Card className="shrink-0">
           <CardContent>
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="region">Data region</FieldLabel>
+              <Field orientation="responsive">
+                <FieldContent>
+                  <FieldLabel htmlFor="region">Data region</FieldLabel>
+                  <FieldDescription>Both accounts must be in this region. EU accounts use the EU region.</FieldDescription>
+                </FieldContent>
                 <Select value={conn.baseURL} onValueChange={(v) => set({ baseURL: v })} disabled={busy}>
-                  <SelectTrigger id="region" className="w-full">
+                  <SelectTrigger id="region" className="@md/field-group:w-72">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -158,122 +161,122 @@ export function ConnectScreen({ regions, conn, sourceMode, destMode, onChange, o
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldDescription>Both accounts must be in this region. EU accounts use the EU region.</FieldDescription>
               </Field>
 
               <FieldSeparator />
 
-              <FieldSet>
-                <FieldLegend>Copy from</FieldLegend>
-                <FieldGroup>
-                  <ToggleGroup
-                    type="single"
-                    variant="outline"
-                    value={sourceMode}
-                    onValueChange={(v) => {
-                      if (!v) return
-                      const next = v as SourceMode
-                      const allowed = destModesFor(next)
-                      onModesChange(next, allowed.includes(destMode) ? destMode : allowed[0])
-                    }}
-                    disabled={busy}
-                    className="w-full"
-                    aria-label="Copy from"
-                  >
-                    {sourceOptions.map((o) => (
-                      <ToggleGroupItem key={o.value} value={o.value} className={toggleItemClass}>
-                        {o.icon} {o.label}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-
-                  {sourceMode === "file" ? (
-                    <Field>
-                      <FieldLabel htmlFor="source-file">Backup file</FieldLabel>
-                      <FilePicker id="source-file" value={conn.sourceFile} onChange={(v) => set({ sourceFile: v })} disabled={busy} />
-                      <FieldDescription>A file saved with "Backup file" as the destination.</FieldDescription>
-                    </Field>
-                  ) : (
-                    <Field>
-                      <FieldLabel htmlFor="source-key">{parentKeyLabel}</FieldLabel>
-                      <SecretInput id="source-key" value={conn.sourceKey} onChange={(v) => set({ sourceKey: v })} disabled={busy} autoFocus={!conn.sourceKey} />
-                      <FieldDescription>Needs {sourceAccess} access to Template Engine.</FieldDescription>
-                    </Field>
-                  )}
-
-                  {sourceMode === "subuser" && (
-                    <Field>
-                      <FieldLabel htmlFor="source-subuser">Subuser to copy from</FieldLabel>
-                      <SubuserPicker
-                        key={conn.baseURL + conn.sourceKey}
-                        id="source-subuser"
-                        conn={conn}
-                        value={conn.sourceSubuser}
-                        onChange={(v) => set({ sourceSubuser: v })}
-                        disabled={busy}
-                      />
-                    </Field>
-                  )}
-                </FieldGroup>
-              </FieldSet>
-
-              <FieldSeparator />
-
-              <FieldSet>
-                <FieldLegend>Copy to</FieldLegend>
-                <FieldGroup>
-                  {allowedDest.length > 1 && (
+              {/* Side by side when there's room, so the whole form fits without scrolling. */}
+              <div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
+                <FieldSet className="md:pr-6">
+                  <FieldLegend>Copy from</FieldLegend>
+                  <FieldGroup>
                     <ToggleGroup
                       type="single"
                       variant="outline"
-                      value={dest}
-                      onValueChange={(v) => v && onModesChange(sourceMode, v as DestMode)}
+                      value={sourceMode}
+                      onValueChange={(v) => {
+                        if (!v) return
+                        const next = v as SourceMode
+                        const allowed = destModesFor(next)
+                        onModesChange(next, allowed.includes(destMode) ? destMode : allowed[0])
+                      }}
                       disabled={busy}
-                      className="w-full flex-wrap"
-                      aria-label="Copy to"
+                      className="w-full"
+                      aria-label="Copy from"
                     >
-                      {allowedDest.map((d) => (
-                        <ToggleGroupItem key={d} value={d} className={toggleItemClass}>
-                          {destOptions[d].icon} {destOptions[d].label}
+                      {sourceOptions.map((o) => (
+                        <ToggleGroupItem key={o.value} value={o.value} className={toggleItemClass}>
+                          {o.icon} {o.label}
                         </ToggleGroupItem>
                       ))}
                     </ToggleGroup>
-                  )}
 
-                  {dest === "key" && (
-                    <Field>
-                      <FieldLabel htmlFor="dest-key">Destination API key</FieldLabel>
-                      <SecretInput id="dest-key" value={conn.destKey} onChange={(v) => set({ destKey: v })} disabled={busy} />
-                      <FieldDescription>The destination account's own key. Needs full access to Template Engine.</FieldDescription>
-                    </Field>
-                  )}
-                  {dest === "subuser" && (
-                    <Field>
-                      <FieldLabel htmlFor="dest-subuser">Subuser to copy to</FieldLabel>
-                      <SubuserPicker
-                        key={conn.baseURL + conn.sourceKey}
-                        id="dest-subuser"
-                        conn={conn}
-                        value={conn.subuser}
-                        onChange={(v) => set({ subuser: v })}
+                    {sourceMode === "file" ? (
+                      <Field>
+                        <FieldLabel htmlFor="source-file">Backup file</FieldLabel>
+                        <FilePicker id="source-file" value={conn.sourceFile} onChange={(v) => set({ sourceFile: v })} disabled={busy} />
+                        <FieldDescription>A file saved with "Backup file" as the destination.</FieldDescription>
+                      </Field>
+                    ) : (
+                      <Field>
+                        <FieldLabel htmlFor="source-key">{parentKeyLabel}</FieldLabel>
+                        <SecretInput id="source-key" value={conn.sourceKey} onChange={(v) => set({ sourceKey: v })} disabled={busy} autoFocus={!conn.sourceKey} />
+                        <FieldDescription>Needs {sourceAccess} access to Template Engine.</FieldDescription>
+                      </Field>
+                    )}
+
+                    {sourceMode === "subuser" && (
+                      <Field>
+                        <FieldLabel htmlFor="source-subuser">Subuser to copy from</FieldLabel>
+                        <SubuserPicker
+                          key={conn.baseURL + conn.sourceKey}
+                          id="source-subuser"
+                          conn={conn}
+                          value={conn.sourceSubuser}
+                          onChange={(v) => set({ sourceSubuser: v })}
+                          disabled={busy}
+                        />
+                      </Field>
+                    )}
+                  </FieldGroup>
+                </FieldSet>
+
+                <FieldSet className="md:pl-6">
+                  <FieldLegend>Copy to</FieldLegend>
+                  <FieldGroup>
+                    {allowedDest.length > 1 && (
+                      <ToggleGroup
+                        type="single"
+                        variant="outline"
+                        value={dest}
+                        onValueChange={(v) => v && onModesChange(sourceMode, v as DestMode)}
                         disabled={busy}
-                      />
-                      <FieldDescription>The parent key acts as this subuser, so you don't need the subuser's own key.</FieldDescription>
-                    </Field>
-                  )}
-                  {dest === "parent" && (
-                    <p className="text-sm text-muted-foreground">
-                      Templates are copied to the parent account that the parent API key belongs to.
-                    </p>
-                  )}
-                  {dest === "file" && (
-                    <p className="text-sm text-muted-foreground">
-                      Choose templates next, then where to save them. The file keeps every version, and can be used as the
-                      source later, from any computer.
-                    </p>
-                  )}
-                </FieldGroup>
-              </FieldSet>
+                        className="w-full flex-wrap"
+                        aria-label="Copy to"
+                      >
+                        {allowedDest.map((d) => (
+                          <ToggleGroupItem key={d} value={d} className={toggleItemClass}>
+                            {destOptions[d].icon} {destOptions[d].label}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                    )}
+
+                    {dest === "key" && (
+                      <Field>
+                        <FieldLabel htmlFor="dest-key">Destination API key</FieldLabel>
+                        <SecretInput id="dest-key" value={conn.destKey} onChange={(v) => set({ destKey: v })} disabled={busy} />
+                        <FieldDescription>The destination account's own key. Needs full access to Template Engine.</FieldDescription>
+                      </Field>
+                    )}
+                    {dest === "subuser" && (
+                      <Field>
+                        <FieldLabel htmlFor="dest-subuser">Subuser to copy to</FieldLabel>
+                        <SubuserPicker
+                          key={conn.baseURL + conn.sourceKey}
+                          id="dest-subuser"
+                          conn={conn}
+                          value={conn.subuser}
+                          onChange={(v) => set({ subuser: v })}
+                          disabled={busy}
+                        />
+                        <FieldDescription>The parent key acts as this subuser, so you don't need the subuser's own key.</FieldDescription>
+                      </Field>
+                    )}
+                    {dest === "parent" && (
+                      <p className="text-sm text-muted-foreground">
+                        Templates are copied to the parent account that the parent API key belongs to.
+                      </p>
+                    )}
+                    {dest === "file" && (
+                      <p className="text-sm text-muted-foreground">
+                        Choose templates next, then where to save them. The file keeps every version, and can be used as the
+                        source later, from any computer.
+                      </p>
+                    )}
+                  </FieldGroup>
+                </FieldSet>
+              </div>
             </FieldGroup>
           </CardContent>
         </Card>

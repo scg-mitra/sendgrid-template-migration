@@ -229,7 +229,7 @@ export function CopyScreen({ job, onFinished, onCopyMore, onRetry, onStartOver, 
         {fatal && <p className="text-sm text-destructive">{fatal}</p>}
       </div>
 
-      <ul className="divide-y rounded-xl border">
+      <ul className="min-h-16 divide-y overflow-y-auto rounded-xl border">
         {job.ids.map((id, i) => (
           <ResultRow
             key={id}
