@@ -164,12 +164,18 @@ The Vite server keeps running between debug sessions; stop it with **Terminal �
 
 ## Releases (GitHub Actions)
 
-Push a version tag to build every platform and publish a GitHub Release:
+Record changes under `## [Unreleased]` in `CHANGELOG.md` as you make them, grouped as **Added**, **Changed**, **Fixed**, **Removed** or **Security**. To release:
+
+1. Rename `## [Unreleased]` to `## [1.2.0] - YYYY-MM-DD`, add a new empty `## [Unreleased]` above it, and update the compare links at the bottom.
+2. Check the notes with `packaging/release-notes.sh 1.2.0`, then commit.
+3. Push a version tag to build every platform and publish a GitHub Release:
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.2.0
+git push origin main v1.2.0
 ```
+
+That version's `CHANGELOG.md` section becomes the release description. The build fails straight away if the section is missing or empty.
 
 Every push to `main` and every pull request also builds everything. Those files are attached to the workflow run (**Actions** tab → run → **Artifacts**) and no release is published. See `.github/workflows/release.yml`.
 

@@ -99,13 +99,27 @@ defer f.Close()
 
 ---
 
-## 5. Agent Boundaries
+## 5. Changelog & Releases
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each version's section is published as its GitHub Release notes, and a tag build fails if the section is missing or empty.
+
+- **Record every user-facing change** under `## [Unreleased]` in the same commit as the change.
+- **Group entries** under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`. Leave out empty headings.
+- **Write for app users**: describe what changed for them, not how the code changed. One bullet per change, in plain language.
+- **Skip internal-only changes**: refactors, tests, CI and tooling don't need entries unless they affect users.
+- **Never edit released sections** unless asked. Never rename `[Unreleased]` to a version or create tags yourself; the maintainer cuts releases (see README → Releases).
+- **Preview notes** with `packaging/release-notes.sh <version>`.
+
+---
+
+## 6. Agent Boundaries
 
 | Category | Rules |
 | :--- | :--- |
 | **Always Do** | Run `golangci-lint` and `go test -race` on any modified package before returning. |
 | | Add table-driven unit tests for every newly added function or modified edge case. |
 | | Keep public exported identifiers documented with complete Go doc comments (`// FunctionName ...`). |
+| | Add a `CHANGELOG.md` entry under `## [Unreleased]` for every user-facing change. |
 | **Ask First** | Adding external dependencies to `go.mod` (prefer the Go standard library first). |
 | | Changing exported function signatures in public API surfaces (`pkg/`). |
 | | Creating or altering database schemas and migration scripts. |
