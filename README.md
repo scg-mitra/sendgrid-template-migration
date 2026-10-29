@@ -47,8 +47,8 @@ Open the app from your app launcher, Start menu or Applications folder. It walks
 
    **Copy** then asks how to copy them:
    - **Versions:** all versions, or only the active one.
-   - **Rename copies:** add text before and/or after each name.
-   - **If the name already exists:** skip the template, add its versions to the existing template (which keeps that template's ID), or create a duplicate alongside it.
+   - **Add to each name:** text to put before and/or after each template's name, e.g. `v2 - ` turns "Invoice" into "v2 - Invoice". A preview shows the result.
+   - **If the name already exists:** the dialog names the templates that clash. Skip them, add their versions to the existing templates (which keeps those templates' IDs), or create duplicates alongside them. Adding text to the names avoids the clash and copies them under the new names instead.
 
    ![Copy options](assets/screenshot-copy-options.png)
 3. **Copy:** a few templates are copied at a time, with live progress, and you can cancel. Each template shows its new ID with a copy button. **Copy IDs** puts `name, old ID, new name, new ID` on the clipboard, and **Save CSV…** saves every result to a file. If some templates fail, **Retry** copies them again with the same options.

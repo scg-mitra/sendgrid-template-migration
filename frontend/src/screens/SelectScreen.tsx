@@ -2,29 +2,18 @@ import { useMemo, useRef, useState, type MouseEvent } from "react"
 import { ArrowLeftIcon, CopyIcon, DownloadIcon, EyeIcon, SearchIcon, TriangleAlertIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import { Backend, Dialogs, backupFilter, errorMessage, isCancelled, type ExistingPolicy, type Session, type TemplateInfo } from "@/api"
+import { Backend, Dialogs, backupFilter, errorMessage, isCancelled, type Session, type TemplateInfo } from "@/api"
+import { CopyDialog } from "@/screens/CopyDialog"
 import type { CopyJob } from "@/screens/CopyScreen"
 import { PreviewDialog } from "@/screens/PreviewDialog"
 import { Screen, ScreenHeading } from "@/screens/layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Toggle } from "@/components/ui/toggle"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { plural } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -301,134 +290,6 @@ export function SelectScreen({ session, selected, onSelectedChange, onBack, onCo
         />
       )}
     </Screen>
-  )
-}
-
-type CopyDialogProps = {
-  session: Session
-  chosen: TemplateInfo[]
-  destNames: Set<string>
-  onCancel: () => void
-  onCopy: (job: CopyJob) => void
-}
-
-const existingChoices: { value: ExistingPolicy; label: string; description: string }[] = [
-  {
-    value: "skip",
-    label: "Skip them",
-    description: "Leave the existing templates as they are.",
-  },
-  {
-    value: "add",
-    label: "Add as new versions",
-    description: "Add the versions to the existing templates and make the copied active version active. Their IDs stay the same.",
-  },
-  {
-    value: "duplicate",
-    label: "Create duplicates",
-    description: "Create another template with the same name alongside each one.",
-  },
-]
-
-/** Asks how to copy the chosen templates. */
-function CopyDialog({ session, chosen, destNames, onCancel, onCopy }: CopyDialogProps) {
-  const [versions, setVersions] = useState<"all" | "active">("all")
-  const [prefix, setPrefix] = useState("")
-  const [suffix, setSuffix] = useState("")
-  const [onExisting, setOnExisting] = useState<ExistingPolicy>("skip")
-
-  const newName = (name: string) => prefix + name + suffix
-  const duplicates = chosen.filter((t) => destNames.has(newName(t.name))).length
-  const example = chosen[0]?.name ?? "Welcome"
-  const choice = existingChoices.find((c) => c.value === onExisting)
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            Copy {plural(chosen.length, "template")} to {session.destination}
-          </DialogTitle>
-          <DialogDescription>Copies get new template IDs, so update any code that uses the old IDs.</DialogDescription>
-        </DialogHeader>
-
-        <FieldGroup className="gap-5">
-          <Field>
-            <FieldLabel>Versions</FieldLabel>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={versions}
-              onValueChange={(v) => v && setVersions(v as "all" | "active")}
-              className="w-full"
-              aria-label="Versions to copy"
-            >
-              <ToggleGroupItem value="all" className={cn("flex-1", toggleItemClass)}>
-                All versions
-              </ToggleGroupItem>
-              <ToggleGroupItem value="active" className={cn("flex-1", toggleItemClass)}>
-                Active version only
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
-
-          <Field>
-            <FieldLabel>Rename copies (optional)</FieldLabel>
-            <div className="flex items-center gap-2">
-              <Input aria-label="Add before the name" placeholder="Before" value={prefix} onChange={(e) => setPrefix(e.target.value)} />
-              <span className="shrink-0 text-sm text-muted-foreground">name</span>
-              <Input aria-label="Add after the name" placeholder="After" value={suffix} onChange={(e) => setSuffix(e.target.value)} />
-            </div>
-            <FieldDescription className="truncate">
-              e.g. "{newName(example)}"
-            </FieldDescription>
-          </Field>
-
-          {duplicates > 0 && (
-            <Field>
-              <FieldLabel className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                <TriangleAlertIcon className="size-4" />
-                {duplicates === 1
-                  ? "1 name already exists in the destination"
-                  : `${duplicates} names already exist in the destination`}
-              </FieldLabel>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                value={onExisting}
-                onValueChange={(v) => v && setOnExisting(v as ExistingPolicy)}
-                className="w-full flex-wrap"
-                aria-label="When the name already exists"
-              >
-                {existingChoices.map((c) => (
-                  <ToggleGroupItem key={c.value} value={c.value} className={cn("flex-1", toggleItemClass)}>
-                    {c.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <FieldDescription>{choice?.description}</FieldDescription>
-            </Field>
-          )}
-        </FieldGroup>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button
-            onClick={() =>
-              onCopy({
-                ids: chosen.map((t) => t.id),
-                names: chosen.map((t) => t.name),
-                options: { prefix, suffix, activeOnly: versions === "active", onExisting },
-              })
-            }
-          >
-            <CopyIcon /> Copy
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 

@@ -10,6 +10,18 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-29
+
+### Changed
+
+- The copy dialog's rename option is now "Add to each name", with a
+  "Template name" marker between the two boxes and a preview of the new name,
+  so it's clear the text is added to the existing name rather than replacing
+  it.
+- When a name already exists in the destination, the copy dialog says which
+  templates clash and suggests adding text to the names as another way round
+  it. It confirms when the new names avoid every clash.
+
 ## [1.2.0] - 2026-10-29
 
 ### Changed
@@ -76,7 +88,8 @@ leave out any that are empty: Added, Changed, Fixed, Removed, Security.
 - Command-line mode (`-template`) for scripted copies.
 - Rate-limit retries and plain-language error messages.
 
-[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/scg-mitra/sendgrid-template-migration/compare/v1.1.0...v1.1.1
